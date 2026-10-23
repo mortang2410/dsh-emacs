@@ -1,5 +1,9 @@
 # 148 — Open sessions with complete rounds
 
+Opening-round target superseded by
+[152](152-open-single-round.md): fresh chats complete only the latest round;
+manual pagination retains its configured target.
+
 ## Background
 
 The complete-round loader from [110](110-load-complete-rounds.md) made

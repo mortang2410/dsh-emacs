@@ -1341,5 +1341,78 @@ Lets a test drive a malformed content value through the result path."
     (should (equal "✓ exit 0"
                    (dsh-emacs-render--tool-status-text 'success 0 nil "not a failure")))))
 
+(ert-deftest dsh-emacs-test-tools-collapsed-bodies-format-on-demand ()
+  :tags '(dsh-unit)
+  (dolist (case '(("bash" "{\"command\":\"printf lazy\"}"
+                  dsh-emacs-render--bash-card-body)
+                 ("read" "{\"file_path\":\"file.txt\"}"
+                  dsh-emacs-render--read-card-body)
+                 ("edit" "{\"file_path\":\"file.txt\",\"old_string\":\"a\",\"new_string\":\"b\"}"
+                  dsh-emacs-render--diff-card-body)
+                 ("custom" "{}" dsh-emacs-render--tool-body-io)))
+    (pcase-let ((`(,name ,args ,formatter) case))
+      (with-temp-buffer
+        (dsh-emacs-mode)
+        (let ((dsh-emacs-tool-expand-by-default nil)
+              (calls 0))
+          (cl-letf (((symbol-function formatter)
+                     (lambda (&rest _) (format "formatted-%d" (cl-incf calls)))))
+            (dsh-emacs-render-tool-call
+             (dsh-emacs-test--tool-call-event 1 "lazy" name args))
+            (dsh-emacs-render-tool-result
+             (dsh-emacs-test--tool-result-event-meta 2 "lazy" "first result" nil))
+            (should (= calls 0))
+            (let ((block (dsh-emacs-ui-find-block
+                          (dsh-emacs-render--make-namespace)
+                          (dsh-emacs-render--tool-call-block-id "lazy"))))
+              (should block)
+              (goto-char (car block)))
+            (dsh-emacs-ui-toggle-fragment)
+            (should (= calls 1))
+            (should (string-match-p "formatted-1" (buffer-string)))
+            (dsh-emacs-ui-toggle-fragment)
+            (dsh-emacs-ui-toggle-fragment)
+            (should (= calls 1))
+            (dsh-emacs-render-tool-result
+             (dsh-emacs-test--tool-result-event-meta 3 "lazy" "second result" nil))
+            (should (= calls 2))
+            (should (string-match-p "formatted-2" (buffer-string)))
+            (should-not (string-match-p "formatted-1" (buffer-string)))
+            (dsh-emacs-ui-toggle-fragment)
+            (dsh-emacs-render-tool-result
+             (dsh-emacs-test--tool-result-event-meta 4 "lazy" "third result" nil))
+            (should (= calls 2))
+            (dsh-emacs-ui-toggle-fragment)
+            (should (= calls 3))
+            (let ((kill-ring nil)
+                  (interprogram-cut-function nil))
+              (dsh-emacs-copy-transcript)
+              (should (string-match-p "formatted-3" (car kill-ring))))))))))
+
+(ert-deftest dsh-emacs-test-tools-pending-body-expands-before-result ()
+  :tags '(dsh-unit)
+  (dolist (case '(("bash" dsh-emacs-render--bash-card-body)
+                 ("edit" dsh-emacs-render--diff-card-body)))
+    (pcase-let ((`(,name ,formatter) case))
+      (with-temp-buffer
+        (dsh-emacs-mode)
+        (let ((dsh-emacs-tool-expand-by-default nil)
+              (calls 0))
+          (cl-letf (((symbol-function formatter)
+                     (lambda (&rest _) (format "details-%d" (cl-incf calls)))))
+            (dsh-emacs-render-tool-call
+             (dsh-emacs-test--tool-call-event 1 "pending" name "{}"))
+            (should (= calls 0))
+            (goto-char (car (dsh-emacs-ui-find-block
+                             (dsh-emacs-render--make-namespace) "tool-pending")))
+            (dsh-emacs-ui-toggle-fragment)
+            (should (= calls 1))
+            (should (string-match-p "details-1" (buffer-string)))
+            (dsh-emacs-render-tool-result
+             (dsh-emacs-test--tool-result-event-meta 2 "pending" "result" nil))
+            (should (= calls 2))
+            (should (string-match-p "details-2" (buffer-string)))
+            (should-not (string-match-p "details-1" (buffer-string)))))))))
+
 (provide 'dsh-test-tools)
 ;;; dsh-test-tools.el ends here

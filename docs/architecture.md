@@ -159,6 +159,21 @@ applied across the block, but visual properties are written only on differing
 runs. Property-only updates do not replace characters. Changed updates still
 render and compare the whole card.
 
+A fragment's `:body` may be a string or a zero-argument text formatter capturing
+immutable inputs. Minimal collapsed fragments do not call that formatter;
+expanded and non-foldable fragments do, as do bordered fragments that need a
+hidden-line count. The UI retains the function identity, not a copied closure
+environment, and caches its string-or-nil result by source identity and body
+width in the fragment snapshot. A replacement source invalidates it; changing
+width rebuilds it the next time the body is needed. Identical-source updates
+reuse the cache even after unrelated buffer edits. The cache is published only
+with a successful atomic write, so a failed expansion leaves the old state
+and retry path intact. Formatters must not mutate transcript or session state.
+Tool renderers defer pending card details and settled terminal/read/diff/generic
+bodies through this boundary; protocol decoding, summaries and state transitions
+remain immediate. This does not defer ordinary assistant Markdown or introduce
+a background render queue. See [153](../postmortem/153-lazy-tool-bodies.md).
+
 Changed updates leave each window's start to move with the text, like a
 marker, for every window showing the buffer. Only two cases adjust it: a
 following window is recentered on `point-max` with native `recenter`, then
@@ -192,14 +207,14 @@ One renderer builds the complete text and its `dsh-emacs-ui-state` property
 before the buffer is edited. Updates and fold changes both use it and replace
 text inside `atomic-change-group`; rendering or insertion errors propagate
 while preserving the previous card. Minimal blocks need no special
-body-range editing path. The stored snapshot includes labels and
-faces as well as the full body; fold/unfold preserves embedded links, icon
-faces and body styling. `:status` is opaque renderer metadata and does not
-apply colors. Renderers choose concrete `:header-face` / `:body-face`
-values; the two regions are disjoint, so a row/status face can never reach
-the body and a body face never tints the row. The UI merges those faces
-after embedded faces on every redraw — which is how the bash terminal card
-keeps its own body faces under a state-tinted header.
+body-range editing path. The stored snapshot includes labels and faces as
+well as the body text or deferred source; fold/unfold preserves embedded
+links, icon faces and body styling. `:status` is opaque renderer metadata
+and does not apply colors. Renderers choose concrete `:header-face` /
+`:body-face` values; the two regions are disjoint, so a row/status face can
+never reach the body and a body face never tints the row. The UI merges
+those faces after embedded faces on every redraw — which is how the bash
+terminal card keeps its own body faces under a state-tinted header.
 
 Each render measures the displaying window once and shares that body width
 between the header, body and footer. Titles take priority over summaries;
@@ -1361,11 +1376,12 @@ the intentionally bounded syntax and differences from the Web renderer.
   reuses its live buffer and stream (see
   [147](../postmortem/147-open-session-buffer-reuse.md)).  The snapshot carries
   a `cursor` plus message-aligned `records`: `turnWindow` requests
-  `dsh-emacs-history-rounds` starts, bounded by `dsh-emacs-history-window`
-  messages per response. The protocol decoder counts starts in the snapshot;
-  on first open, Events asks the history controller to fetch any missing
-  rounds after applying the snapshot and projections. The live follow stream
-  stays gapless. Reconnects do not start another automatic history load.
+  one round start, bounded by `dsh-emacs-history-window` messages per response.
+  The protocol decoder counts starts in the snapshot; on first open, Events
+  asks the history controller to complete one round only if no start is
+  present, after applying the snapshot and projections. The manual
+  `dsh-emacs-history-rounds` target does not affect opening. The live follow
+  stream stays gapless. Reconnects do not start another automatic history load.
 - **Reconnect is self-healing**: the reconnect socket pins `no-conversion` — on
   a reused events buffer the re-inferred process coding system folds the 101
   response's `\r\n\r\n` to `\n\n`, so the handshake never matched and the
@@ -1407,8 +1423,9 @@ the intentionally bounded syntax and differences from the Web renderer.
 - **Each history response is bounded**: the snapshot and continuation pages
   request `dsh-emacs-history-window` (default 30 messages). Completing long
   rounds can require multiple requests and substantial staging memory. The
-  GC threshold remains dynamically raised during rendering; bounded network
-  batches do not bound the total cost of the requested round range.
+  HTTP callback dynamically raises the GC threshold for page decoding and
+  rendering. Bounded network batches do not bound the total cost of the
+  requested round range; staged pages still publish in one synchronous render.
 - **Core connection (list side)**: the session list keeps a separate
   `/api/remote.mux` connection that opens `session/control` + `workspace/follow`
   + `$events`.  `session/control` delivers whole-host projection baselines and
@@ -1434,9 +1451,10 @@ oldest/newest sequence numbers, `hasMore`, and `(ROUND SEQ RECORD)` boundaries.
 round count. `maxMessages` stays bounded by `dsh-emacs-history-window`.
 A partial oldest round counts as the first round to complete. This uses
 original server round numbers, including autonomous continuations. Opening
-uses the same request builder and loop for the missing round count, with no
-initiating window to visit; manual loads retain their jump behavior. See
-[148](../postmortem/148-open-complete-rounds.md).
+uses the same request builder and loop to complete only the latest round,
+with no initiating window to visit; manual loads retain their jump behavior.
+See [152](../postmortem/152-open-single-round.md), which narrows the automatic
+target introduced by [148](../postmortem/148-open-complete-rounds.md).
 
 One buffer-local request plist stages records across bounded RPCs. Before
 publishing, the loader checks request identity, session/address, the original

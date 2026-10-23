@@ -133,7 +133,6 @@ generation and a new clientId.")
 ;; consumer and the late-answer command share it with the result renderer.
 (defvar dsh-emacs--session-questions)
 (defvar dsh-emacs-history-window)
-(defvar dsh-emacs-history-rounds)
 (declare-function dsh-emacs-history--start-load "dsh-emacs-history"
                   (count &optional visit))
 (declare-function dsh-emacs--chat-session-item "dsh-emacs" (session-id))
@@ -516,8 +515,7 @@ The opening snapshot replaces the local revision and attempt baseline."
                     stream-id "session/follow"
                     (dsh-protocol-session-follow-request
                      session-id (process-get process 'dsh-emacs-follow-address)
-                     (bound-and-true-p dsh-emacs-history-window)
-                     dsh-emacs-history-rounds))))
+                     (bound-and-true-p dsh-emacs-history-window) 1))))
         (when (buffer-live-p chat)
           (with-current-buffer chat
             (setq dsh-emacs--assistant-stream-revision nil
@@ -684,8 +682,9 @@ event; there is no packed-row form any more) — then advances
 `assistantStream' baseline so a reconnect continues the live body, and
 decodes and applies the remaining snapshot projections.  The snapshot is the
 opening history tail; no separate history fetch precedes the connect.  On
-first open, bounded backward pages complete `dsh-emacs-history-rounds' after
-the snapshot is applied, without delaying the live stream or moving point.
+first open, bounded backward pages complete only the latest round after
+applying the snapshot, without moving point.  Live follow stays connected;
+rendering a long completed range can still block the main thread.
 VALUE may already be a decoded `dsh-protocol-follow-snapshot'."
   (when (buffer-live-p chat)
     (with-current-buffer chat
@@ -757,13 +756,12 @@ VALUE may already be a decoded `dsh-protocol-follow-snapshot'."
           (xref-push-marker-stack dsh-emacs--subagent-departure)
           (setq dsh-emacs--subagent-departure nil))
         (setq dsh-emacs--ws-last-event-time (float-time))
-        ;; Keep the gapless follow stream running while bounded pages fill in
-        ;; the opening range.  Reconnects must not restart a canceled load or
-        ;; extend a transcript the user has already chosen to browse.
+        ;; Complete only the latest round on opening.  The manual pagination
+        ;; target must not multiply automatic work for long rounds.  Reconnects
+        ;; must not restart a canceled load or extend a browsed transcript.
         (when (and initial entries has-more (integerp cursor)
-                   (< round-count dsh-emacs-history-rounds))
-          (dsh-emacs-history--start-load
-           (- dsh-emacs-history-rounds round-count)))))))
+                   (zerop round-count))
+          (dsh-emacs-history--start-load 1))))))
 
 (defun dsh-emacs-events--apply-snapshot-projections (session-id projections)
   "Apply decoded follow PROJECTIONS after history and the assistant prefix.

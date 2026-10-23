@@ -138,8 +138,8 @@ snappier keys."
 
 (defcustom dsh-emacs-history-window 30
   "Maximum messages per history request, including the opening snapshot.
-`dsh-emacs-history-rounds' controls how many complete rounds to load when
-opening a fresh chat or invoking `dsh-emacs-load-older-history'.  Long rounds
+Opening a fresh chat completes only the latest round;
+`dsh-emacs-history-rounds' controls manual older-history loads.  Long rounds
 are completed with additional bounded requests.  A smaller batch reduces
 per-response parsing work but requires more network round trips."
   :type 'integer

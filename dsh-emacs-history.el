@@ -59,10 +59,10 @@ Other windows keep their reading positions; the draft is left untouched."
   (recenter -1))
 
 (defcustom dsh-emacs-history-rounds 3
-  "Number of complete rounds loaded on opening or by older-history commands.
-Opening a fresh chat loads this many latest rounds without moving point.
-For `dsh-emacs-load-older-history', a partially visible oldest round counts
-as the first round to complete; a prefix overrides this value for one load."
+  "Number of complete earlier rounds fetched by `dsh-emacs-load-older-history'.
+A partially visible oldest round counts as the first round to complete.
+A prefix argument overrides this value for one load.  Opening a fresh chat
+always completes only the latest round, independently of this option."
   :type 'natnum
   :group 'dsh-emacs)
 

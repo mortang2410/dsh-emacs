@@ -2405,7 +2405,7 @@
                            (string-match-p "\"sess-open\"" sent))))))
       (when (process-live-p proc) (delete-process proc)))))
 
-(ert-deftest dsh-emacs-test-events-follow-open-requests-configured-rounds ()
+(ert-deftest dsh-emacs-test-events-follow-open-requests-one-round ()
   :tags '(dsh-unit)
   (let ((dsh-emacs-history-rounds 5)
         (dsh-emacs-history-window 7)
@@ -2426,7 +2426,7 @@
                                (alist-get 'args (alist-get 'payload frame)))))
       (should (equal (alist-get 'endpoint frame) "session/follow"))
       (should (equal (alist-get 'turnWindow request)
-                     '((minMessages . 1) (minTurns . 5))))
+                     '((minMessages . 1) (minTurns . 1))))
       (should (= (alist-get 'maxMessages request) 7))
       (should (eq (alist-get 'assistantStream request) t)))))
 

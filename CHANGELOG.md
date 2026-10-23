@@ -29,12 +29,11 @@ minor) and stay undated until the release is cut.
 
 ### Added
 
-- **Open sessions with complete rounds**: fresh chat buffers load the latest
-  `dsh-emacs-history-rounds` rounds (3 by default), just like `C-c C-o` loads
-  earlier rounds. Long rounds continue across bounded pages without moving
+- **Open sessions with complete rounds**: fresh chat buffers complete the
+  latest round, fetching extra bounded pages for a long round without moving
   the draft cursor or delaying live output; `C-c C-o` cancels the pending
-  history load. Switching back to an already-open chat remains unchanged.
-  (rationale: postmortem/148)
+  history load and loads earlier rounds. Switching back to an already-open
+  chat remains unchanged. (rationale: postmortem/148, postmortem/152)
 - **Web-style task and activity disclosures**: settled thinking and tool
   cards fold into independent summaries between visible replies. Successful
   turns without mid-turn input also fold their whole process under a muted
@@ -78,6 +77,11 @@ minor) and stay undated until the release is cut.
 
 ### Fixed
 
+- **Skip formatting folded tool details**: live and replayed tool cards now
+  prepare their terminal, read, diff and generic result bodies only when
+  expanded. Repeated expansion reuses the formatted body; a new result or
+  width change refreshes it, and expanded cards still update immediately.
+  (rationale: postmortem/153)
 - **Keep links looking like links**: a link label authored as inline code,
   bold, italic or strikethrough keeps the link's own colour and underline;
   the label's styling still applies underneath instead of overriding the

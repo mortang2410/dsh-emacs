@@ -364,12 +364,15 @@ messages (e.g. `command/done')."
         (ert-info ((format "%s" (format "history-page-settles-tools-%s" busy)))
           (should (eq 'success (plist-get (dsh-emacs-render--tool-state "old-call")
                                           :state)))
-          (should (let* ((block (dsh-emacs-ui-find-block
-                                 (dsh-emacs-render--make-namespace) "tool-old-call"))
-                         (state (and block (get-text-property
-                                            (car block) 'dsh-emacs-ui-state))))
-                    (and state (string-match-p "HISTORICAL-OUTPUT"
-                                               (map-elt state :body))))))
+          (let ((block (dsh-emacs-ui-find-block
+                        (dsh-emacs-render--make-namespace) "tool-old-call")))
+            (should block)
+            (save-excursion
+              (goto-char (car block))
+              (should (map-elt (get-text-property (point) 'dsh-emacs-ui-state)
+                               :collapsed))
+              (dsh-emacs-ui-toggle-fragment))
+            (should (string-match-p "HISTORICAL-OUTPUT" (buffer-string)))))
         (ert-info ((format "%s" (format "history-page-preserves-live-state-%s" busy)))
           (should (eq dsh-emacs--ml-busy busy))
           (should (equal dsh-emacs--modeline-model "current-model"))
@@ -727,7 +730,7 @@ messages (e.g. `command/done')."
         (should (null failure))
         (should (equal-including-properties before (buffer-string)))))))
 
-(ert-deftest dsh-emacs-test-history-opening-completes-rounds-without-moving-draft ()
+(ert-deftest dsh-emacs-test-history-opening-completes-one-round-without-moving-draft ()
   :tags '(dsh-unit)
   (dolist (subagent '(nil t))
     (save-window-excursion
@@ -755,11 +758,9 @@ messages (e.g. `command/done')."
              (current-buffer)
              `((cursor . 95) (hasMore . t)
                (records . ,(vector
-                            (dsh-test--history-fixture "assistant/message" 80 "ROUND-8 TAIL")
-                            (dsh-test--history-event-record "turn/start" 90 '((turn . 9)))
-                            (dsh-test--history-fixture "user/message" 91 "ROUND-9 QUESTION")))))
+                            (dsh-test--history-fixture "assistant/message" 80 "ROUND-8 TAIL")))))
             (should (= (length requests) 1))
-            (should (= (alist-get 'minTurns (alist-get 'turnWindow (car requests))) 2))
+            (should (= (alist-get 'minTurns (alist-get 'turnWindow (car requests))) 1))
             (should (= (alist-get 'maxMessages (car requests)) 2))
             (should (= (alist-get 'throughSeq (car requests)) 95))
             (should (= (alist-get 'beforeSeq (car requests)) 80))
@@ -784,15 +785,14 @@ messages (e.g. `command/done')."
                                     (dsh-test--history-fixture "user/message" 71 "ROUND-8 QUESTION")))))
             (should-not callbacks)
             (should-not dsh-emacs--history-loading)
-            (should (= dsh-emacs--history-earliest-seq 60))
+            (should (= dsh-emacs--history-earliest-seq 70))
             (should (= dsh-emacs--anchor-seq 96))
             (should (= (point) draft))
             (should (string-suffix-p "UNSENT DRAFT" (buffer-string)))
-            (should (< (dsh-test--history-text-pos "ROUND-7 QUESTION")
-                       (dsh-test--history-text-pos "ROUND-8 QUESTION")
+            (should-not (dsh-test--history-text-pos "ROUND-7 QUESTION"))
+            (should (< (dsh-test--history-text-pos "ROUND-8 QUESTION")
                        (dsh-test--history-text-pos "ROUND-8 MIDDLE")
                        (dsh-test--history-text-pos "ROUND-8 TAIL")
-                       (dsh-test--history-text-pos "ROUND-9 QUESTION")
                        (dsh-test--history-text-pos "LIVE REPLY")))
             (set-marker draft nil)))))))
 
@@ -837,9 +837,10 @@ messages (e.g. `command/done')."
       (setq-local dsh-emacs--buffer-session "opening-done")
       (when (eq case 'reconnect)
         (setq dsh-emacs--history-earliest-seq 1))
-      (let ((dsh-emacs-history-rounds 1))
+      (let ((dsh-emacs-history-rounds 5)
+            requests)
         (cl-letf (((symbol-function 'dsh-emacs--rpc-async)
-                   (lambda (&rest _) (ert-fail "Unneeded history request"))))
+                   (lambda (&rest args) (push args requests))))
           (dsh-emacs-events--follow-snapshot
            (current-buffer)
            `((cursor . 10)
@@ -850,6 +851,7 @@ messages (e.g. `command/done')."
                                                "turn/start" 9 '((turn . 4)))))
                            (_ (vector (dsh-test--history-fixture
                                        "user/message" 9 "VISIBLE QUESTION"))))))))
+        (should-not requests)
         (should-not dsh-emacs--history-loading)
         (should (= dsh-emacs--anchor-seq 10))))))
 

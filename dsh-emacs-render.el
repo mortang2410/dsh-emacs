@@ -2364,6 +2364,16 @@ transcript; they are removed with the buffer on a session reset/replay."
      :create-new (null status) :expanded t
      :insert-before (dsh-emacs-render--input-insert-point))))
 
+(defun dsh-emacs-render--pending-tool-body
+    (variant name args body-text questions)
+  "Format a pending card from VARIANT, NAME, ARGS, BODY-TEXT and QUESTIONS."
+  (cond (questions (dsh-emacs-render--ask-body questions nil nil))
+        ((equal variant "bash")
+         (or (dsh-emacs-render--bash-card-body body-text) body-text))
+        ((member variant '("write" "edit"))
+         (or (dsh-emacs-render--diff-card-body name args nil 'pending) body-text))
+        (t body-text)))
+
 (defun dsh-emacs-render-tool-call (event)
   "Render a `tool/call' EVENT and return its seq, or nil when hidden.
 Todo snapshots still apply when ordinary tool cards are hidden."
@@ -2402,23 +2412,9 @@ Todo snapshots still apply when ordinary tool cards are hidden."
                                 nil nil nil))
                           (cdr header)))
              (body-text (dsh-emacs-render--tool-body-text arguments))
-             ;; bash and file-mutation rows draw their (running) expanded body
-             ;; as the card the settled result will complete — the `$' prompt
-             ;; rows, or the intended diff — so the first frame already
-             ;; matches.  read waits for its metadata, like dsh web.  The
-             ;; variant gate keeps the other variants from re-parsing their
-             ;; arguments for a card they cannot have.
-             (display-body (cond (ask-questions
-                                  (dsh-emacs-render--ask-body
-                                   ask-questions nil nil))
-                                 ((equal variant "bash")
-                                  (or (dsh-emacs-render--bash-card-body body-text)
-                                      body-text))
-                                 ((member variant '("write" "edit"))
-                                  (or (dsh-emacs-render--diff-card-body
-                                       name args nil 'pending)
-                                      body-text))
-                                 (t body-text)))
+             (display-body
+              (apply-partially #'dsh-emacs-render--pending-tool-body
+                               variant name args body-text ask-questions))
              (ns (dsh-emacs-render--make-namespace))
              (insert-point (dsh-emacs-render--input-insert-point))
              (ts (dsh-emacs-render--event-time event))
@@ -3148,6 +3144,21 @@ everything else `success'."
       event :event-p t))
     (dsh-protocol-event-sequence--from-alist event)))
 
+(cl-defun dsh-emacs-render--settled-tool-body
+    (&key variant name args args-raw meta text state out-text exit-code signal
+          error-reason status-text)
+  "Format a settled tool body from captured card facts at the current width."
+  (or (and (equal variant "bash")
+           (dsh-emacs-render--bash-card-body
+            args out-text state exit-code signal error-reason))
+      (and (eq state 'success)
+           (dsh-emacs-render--read-card-body name args-raw meta text))
+      (and (member variant '("write" "edit"))
+           (dsh-emacs-render--diff-card-body name args-raw meta state))
+      (dsh-emacs-render--present-card-body name text)
+      (dsh-emacs-render--job-card-body name text)
+      (dsh-emacs-render--tool-body-io args text status-text)))
+
 (cl-defun dsh-emacs-render--apply-tool-result (result)
   "Update an existing tool card from decoded RESULT.
 Both stream results and late question answers use this path; event sequence
@@ -3283,32 +3294,21 @@ tracking belongs to `dsh-emacs-render-tool-result'."
                                 (concat "This question set is pending — "
                                         "answer it later with M-x "
                                         "dsh-emacs-answer-question.")))
-             ;; A settled bash/pwsh call expands into a terminal card
-             ;; (`$' prompt rows + output + status footer), a file read into
-             ;; the line-numbered read card, a write/edit into its diff
-             ;; card, an ask call into its question/answer record; a call
-             ;; the card models cannot describe (or a failed one) keeps the
-             ;; generic ioCard (IN/OUT).  The variant gate keeps the other
-             ;; variants from re-parsing their arguments.
+             ;; A settled question/goal card stays eager: its body is small
+             ;; and the card is interactive.  Large result bodies are formatted
+             ;; on demand, including the pending card's own questionnaire.
              (body (or goal-body
                        (and ask-questions
                             (dsh-emacs-render--ask-body
                              ask-questions ask-answers
                              (or pending-text ask-verdict status-text)))
-                       (and (equal variant "bash")
-                            (dsh-emacs-render--bash-card-body
-                             args (nth 0 shell) state exit-code signal
-                             error-reason))
-                       (and (eq state 'success)
-                            (dsh-emacs-render--read-card-body
-                             name args-raw meta full-text))
-                       (and (member variant '("write" "edit"))
-                            (dsh-emacs-render--diff-card-body
-                             name args-raw meta state))
-                       (dsh-emacs-render--present-card-body name full-text)
-                       (dsh-emacs-render--job-card-body name full-text)
-                       (dsh-emacs-render--tool-body-io
-                        args full-text status-text))))
+                       (apply-partially
+                        #'dsh-emacs-render--settled-tool-body
+                        :variant variant :name name :args args :args-raw args-raw
+                        :meta meta :text full-text :state state
+                        :out-text (nth 0 shell)
+                        :exit-code exit-code :signal signal
+                        :error-reason error-reason :status-text status-text))))
         (dsh-emacs-ui-update-fragment
          (dsh-emacs-ui-make-fragment
           :namespace-id ns

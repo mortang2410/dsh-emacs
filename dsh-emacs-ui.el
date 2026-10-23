@@ -128,12 +128,20 @@ indicator); BODY-FACE styles the expanded body only.  There is no
 whole-block face.  Both merge after embedded text faces, preserving icon
 and body styling.  NON-FOLDABLE disables folding.  Updates preserve the
 user's fold state.  PADDING adds a blank line above and below the fragment,
-including when collapsed."
+including when collapsed.
+BODY may also be a zero-argument function returning a string or nil.  It
+must capture immutable inputs and only format text in the current buffer.
+Minimal collapsed fragments defer this function until expansion; other
+styles need the body for their line count.  Successful renders cache its
+result at the current body width until the function or width changes.
+A state carrying such a function must not be deep-copied with `copy-tree`:
+that would copy the function and defeat the identity the cache relies on."
   (list (cons :namespace-id namespace-id)
         (cons :block-id block-id)
         (cons :label-left (dsh-emacs-ui--string-or-nil label-left))
         (cons :label-right (dsh-emacs-ui--string-or-nil label-right))
-        (cons :body (dsh-emacs-ui--string-or-nil body))
+        (cons :body (if (functionp body) body
+                      (dsh-emacs-ui--string-or-nil body)))
         (cons :style style)
         (cons :status status)
         (cons :header-face header-face)
@@ -366,10 +374,30 @@ Text properties remain authoritative; invalid markers are never returned.")
 MODEL carries both identity components; EXPANDED sets its fold state.
 WIDTH, when supplied, is the body width already measured by the caller."
   (let* ((style (map-elt model :style))
-         (body (map-elt model :body))
          (non-foldable (map-elt model :non-foldable))
          (collapsed (not (or non-foldable expanded)))
          (width (or width (dsh-emacs-ui--box-width)))
+         ;; Do not copy a closure's lexical environment.  Cache entries are
+         ;; immutable; publish a new one only with the successfully drawn state.
+         (state (mapcar (lambda (entry)
+                          (if (memq (car entry) '(:body :body-cache))
+                              (cons (car entry) (cdr entry))
+                            (copy-tree entry)))
+                        model))
+         (source (map-elt model :body))
+         (body
+          (if (not (functionp source)) source
+            (unless (and collapsed (eq style 'minimal))
+              (let ((cache (map-elt model :body-cache)))
+                (unless (and (eq (nth 0 cache) source)
+                             (eql (nth 1 cache) width))
+                  (setq cache
+                        (list source width
+                              (when-let* ((text (dsh-emacs-ui--string-or-nil
+                                                (funcall source))))
+                                (copy-sequence text))))
+                  (setf (alist-get :body-cache state) cache))
+                (nth 2 cache)))))
          (header (concat (dsh-emacs-ui--top-border
                           (map-elt model :label-left) (map-elt model :label-right)
                           collapsed style non-foldable width)
@@ -387,8 +415,7 @@ WIDTH, when supplied, is the body width already measured by the caller."
          (text (concat padding header body-text
                        (unless (eq style 'minimal)
                          (concat (dsh-emacs-ui--bottom-border style width) "\n"))
-                       padding))
-         (state (copy-tree model)))
+                       padding)))
     ;; Snapshots must not alias mutable strings owned by the caller.
     (dolist (key '(:namespace-id :block-id :label-left :label-right :body))
       (when (stringp (map-elt state key))
@@ -419,7 +446,10 @@ CREATE-NEW bypasses lookup.  EXPANDED sets initial visibility.
 INSERT-BEFORE selects the insertion position for a new block.
 Return the exact (START . END) range, excluding surrounding spacing.
 Rendering completes before editing; failed replacements roll back and signal."
-  (let* ((namespace-id (map-elt model :namespace-id))
+  (let* ((model (cl-remove-if
+                 (lambda (entry) (memq (car entry) '(:collapsed :body-cache)))
+                 model))
+         (namespace-id (map-elt model :namespace-id))
          (block-id (map-elt model :block-id))
          (width (dsh-emacs-ui--box-width))
          (layout (list width (copy-sequence dsh-emacs-ui-label-separator)))
@@ -442,12 +472,20 @@ Rendering completes before editing; failed replacements roll back and signal."
                                (eql (nth 2 entry) (buffer-modified-tick))
                                (equal (nth 3 entry) layout)
                                (equal-including-properties
-                                model (assq-delete-all :collapsed
-                                                       (copy-sequence state))))
+                                model (cl-remove-if
+                                       (lambda (entry)
+                                         (memq (car entry)
+                                               '(:collapsed :body-cache)))
+                                       state)))
                       (cl-return-from dsh-emacs-ui-update-fragment block))
-                    (dsh-emacs-ui--render-fragment
-                     model (if block (not (map-elt state :collapsed)) expanded)
-                     width))))
+                    (let ((cache (assq :body-cache state)))
+                      (dsh-emacs-ui--render-fragment
+                       (if (and cache (eq (map-elt model :body)
+                                          (map-elt state :body)))
+                           (cons cache model)
+                         model)
+                       (if block (not (map-elt state :collapsed)) expanded)
+                       width)))))
             (when (and block
                        (let ((old (buffer-substring (car block) (cdr block)))
                              (end (length text)))

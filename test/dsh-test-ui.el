@@ -1453,5 +1453,122 @@ both followers' prompts above their viewports."
         (should-not (invisible-p (point)))
         (should (= (point) (point-min)))))))
 
+(ert-deftest dsh-emacs-test-ui-lazy-body-cache-and-update ()
+  :tags '(dsh-unit)
+  (with-temp-buffer
+    (let* ((calls 0)
+           (width 60)
+           (body (lambda ()
+                   (cl-incf calls)
+                   (propertize (format "body at %d" width) 'face 'bold)))
+           (model (dsh-emacs-ui-make-fragment
+                   :namespace-id "lazy" :block-id "one" :style 'minimal
+                   :label-left "Tool" :body body)))
+      (cl-letf (((symbol-function 'dsh-emacs-ui--box-width) (lambda () width)))
+        (dsh-emacs-ui-update-fragment model)
+        (should (= calls 0))
+        (goto-char (point-min))
+        (dsh-emacs-ui-toggle-fragment)
+        (should (= calls 1))
+        (should (string-match-p "body at 60" (buffer-string)))
+        (let ((pos (save-excursion (search-forward "body at 60") (match-beginning 0))))
+          (should (eq (get-text-property pos 'face) 'bold)))
+        (dsh-emacs-ui-toggle-fragment)
+        (dsh-emacs-ui-toggle-fragment)
+        (should (= calls 1))
+        ;; An unchanged snapshot, even after an unrelated buffer edit, reuses
+        ;; the formatted body rather than recomputing it.
+        (let ((inhibit-read-only t))
+          (save-excursion (goto-char (point-max)) (insert "neighbor\n")))
+        (dsh-emacs-ui-update-fragment model)
+        (should (= calls 1))
+        (dsh-emacs-ui-toggle-fragment)
+        (setq width 40)
+        (dsh-emacs-ui-toggle-fragment)
+        (should (= calls 2))
+        (should (string-match-p "body at 40" (buffer-string)))
+        ;; A new source invalidates the previous result, retaining fold state.
+        (setf (alist-get :body model) (lambda () (cl-incf calls) "replacement"))
+        (dsh-emacs-ui-update-fragment model)
+        (should (= calls 3))
+        (should (string-match-p "replacement" (buffer-string)))
+        (should-not (string-match-p "body at" (buffer-string)))
+        (dsh-emacs-ui-toggle-fragment)
+        (setf (alist-get :body model) (lambda () (cl-incf calls) nil))
+        (dsh-emacs-ui-update-fragment model)
+        (should (= calls 3))
+        (dsh-emacs-ui-toggle-fragment)
+        (dsh-emacs-ui-toggle-fragment)
+        (dsh-emacs-ui-toggle-fragment)
+        (should (= calls 4))))))
+
+(ert-deftest dsh-emacs-test-ui-lazy-body-failure-keeps-snapshot ()
+  :tags '(dsh-unit)
+  (dolist (fault '(body insert))
+    (with-temp-buffer
+      (let ((calls 0)
+            (fail t)
+            (original-insert (symbol-function 'insert)))
+        (dsh-emacs-ui-update-fragment
+         (dsh-emacs-ui-make-fragment
+          :style 'minimal :label-left "Tool"
+          :body (lambda ()
+                  (cl-incf calls)
+                  (when (and fail (eq fault 'body)) (error "Body failed"))
+                  "lazy output")))
+        (goto-char (point-min))
+        (let ((before (buffer-string))
+              (state (get-text-property (point-min) 'dsh-emacs-ui-state)))
+          (cl-letf (((symbol-function 'insert)
+                     (lambda (&rest args)
+                       (apply original-insert args)
+                       (when (and fail (eq fault 'insert))
+                         (error "Insertion failed")))))
+            (should-error (dsh-emacs-ui-toggle-fragment)))
+          (should (equal-including-properties before (buffer-string)))
+          (should (eq state (get-text-property (point-min) 'dsh-emacs-ui-state)))
+          (should-not (assq :body-cache state))
+          (setq fail nil)
+          (goto-char (point-min))
+          (dsh-emacs-ui-toggle-fragment)
+          (should (= calls 2))
+          (should (string-match-p "lazy output" (buffer-string))))))))
+
+(ert-deftest dsh-emacs-test-ui-lazy-body-respects-layout ()
+  :tags '(dsh-unit)
+  (dolist (style '(minimal rounded sharp))
+    (dolist (non-foldable '(nil t))
+      (let* ((calls 0)
+             (body "first\nsecond")
+             (model (dsh-emacs-ui-make-fragment
+                     :style style :non-foldable non-foldable
+                     :label-left "Title" :body (lambda () (cl-incf calls) body)))
+             (lazy (substring-no-properties
+                    (dsh-emacs-ui--render-fragment model nil 60))))
+        (should (= calls (if (and (eq style 'minimal) (not non-foldable)) 0 1)))
+        (setf (alist-get :body model) body)
+        (should (equal lazy (substring-no-properties
+                             (dsh-emacs-ui--render-fragment model nil 60))))))))
+
+(ert-deftest dsh-emacs-test-ui-lazy-body-state-update-keeps-one-cache ()
+  :tags '(dsh-unit)
+  (with-temp-buffer
+    (let ((calls 0)
+          (width 60))
+      (cl-letf (((symbol-function 'dsh-emacs-ui--box-width) (lambda () width)))
+        (dsh-emacs-ui-update-fragment
+         (dsh-emacs-ui-make-fragment
+          :style 'minimal :label-left "Tool"
+          :body (lambda () (cl-incf calls) (format "width %d" width)))
+         :expanded t)
+        (dolist (next-width '(60 60 40 40))
+          (setq width next-width)
+          (dsh-emacs-ui-update-fragment
+           (get-text-property (point-min) 'dsh-emacs-ui-state))
+          (let ((state (get-text-property (point-min) 'dsh-emacs-ui-state)))
+            (should (= 1 (cl-count :body-cache state :key #'car))))
+          (should (string-match-p (format "width %d" width) (buffer-string))))
+        (should (= calls 2))))))
+
 (provide 'dsh-test-ui)
 ;;; dsh-test-ui.el ends here
