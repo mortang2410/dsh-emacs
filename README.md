@@ -1,13 +1,14 @@
 # dsh-emacs — an Emacs client for DeepSeek Harness
 
 [![CI](https://github.com/vritser/dsh-emacs/actions/workflows/ci.yml/badge.svg)](https://github.com/vritser/dsh-emacs/actions/workflows/ci.yml)
+[![dsh](https://img.shields.io/badge/dsh-0.2.1--rc.2-blue)](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)
 
 Use [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`)
 from Emacs: streaming replies, tool calls, workspace sessions, subagent chats,
 file attachments, and model selection. Requires **Emacs 28.1+**, with no
 mandatory third-party Emacs packages.
 
-![Chat buffer with streaming replies and tool calls](assets/chat.png)
+https://github.com/user-attachments/assets/9ee9fc66-1997-49b7-a921-5753690edafa
 
 dsh-emacs **0.7.0** is compatible with **dsh 0.2.1-rc.2**, the
 [latest upstream release](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)
@@ -65,8 +66,6 @@ The PTC mode preset ID is now `ptc`. If your configuration sets
 Idle session dots, the `New Session` placeholder and muted text (timestamps,
 reply footers, deliverable descriptions, subagent error notices) use the
 theme's `shadow` face (grey by default); running session dots are orange.
-
-![Session list grouped by workspace](assets/sessions.png)
 
 ### Essential keys
 
