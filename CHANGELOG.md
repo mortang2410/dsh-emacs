@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format follows
 sections carry the planned next version (pre-1.0: `fix` → patch, features →
 minor) and stay undated until the release is cut.
 
+## 0.8.0 - Unreleased
+
+### Added
+
+- **Recents at the top of the session list**: an initially expanded group
+  shows the 15 most recently updated visible sessions across workspaces,
+  while retaining their original workspace rows. Set
+  `dsh-emacs-session-recents-limit` to change the count or use zero to hide
+  it. Workspace filtering, group folding and session commands also work in
+  Recents. (rationale: postmortem/154)
+
+### Fixed
+
+- **Live session activity ordering**: sending a message now updates the
+  session's cached activity time, so Recents and workspace rows reorder
+  immediately. Activity received during a list refresh survives its snapshot,
+  and older events cannot roll back newer timestamps. (rationale: postmortem/154)
+
 ## 0.7.0 - 2026-10-23
 
 Compatible with **dsh 0.2.1-rc.2**, the latest upstream release as of

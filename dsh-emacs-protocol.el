@@ -1906,9 +1906,11 @@ the next; a later migration-required record must not discard earlier updates."
                                        ("api-session/added" (car args))
                                        ("api-session/status"
                                         (dsh-protocol--boolean (cadr args)))
+                                       ("api-session/activity" (cadr args))
                                        (_ nil))))))
   "A session emit with named arguments instead of positional wire fields.
-VALUE is the raw added summary or decoded running flag; otherwise nil.
+VALUE is the raw added summary, decoded running flag or activity timestamp;
+otherwise nil.
 Added summaries stay raw until cache application so a mutable cached session
 cannot contaminate the payload retained for refresh replay."
   name session-id value)

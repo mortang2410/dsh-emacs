@@ -670,7 +670,7 @@
                     ("api-session/status" ("busy" t) "busy" t)
                     ("api-session/status" ("idle" :json-false) "idle")
                     ("api-session/status" ("absent") "absent")
-                    ("api-session/activity" ("recent" 123) "recent")
+                    ("api-session/activity" ("recent" 123) "recent" 123)
                     ("future-event" ("ignored" 456) nil)))
       (pcase-let* ((`(,name ,args ,id . ,rest) case)
                    (item (dsh-protocol-core-item--from-alist

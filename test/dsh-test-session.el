@@ -112,6 +112,267 @@ window's own point behind, which the session list now preserves per window."
                    (= 45 (string-width trunc))
                    (not (equal ascii cjk)))))))
 
+(ert-deftest dsh-emacs-test-session-recents-membership ()
+  :tags '(dsh-unit)
+  (let* ((sessions
+          (dsh-emacs-test--session-items
+           (cl-loop for n from 1 to 25
+                    collect `((sessionId . ,(number-to-string n))
+                              (updatedAt . ,n)))))
+         (workspaces
+          (list (dsh-protocol-workspace--from-alist
+                 '((workspaceId . "ws") (title . "Project")
+                   (sessionIds . ["22" "20"])))))
+         (dsh-emacs--archived-sessions (make-hash-table :test #'equal))
+         (dsh-emacs--current-session "22")
+         (dsh-emacs-session--filter-ws-id nil))
+    (puthash "25" t dsh-emacs--archived-sessions)
+    (setf (dsh-protocol-session-blank (nth 23 sessions)) t
+          (dsh-protocol-session-origin (nth 22 sessions)) "subagent"
+          (dsh-protocol-session-blank (nth 21 sessions)) t)
+    (dolist (limit '(10 15 20))
+      (let* ((dsh-emacs-session-recents-limit limit)
+             (groups (dsh-emacs-session--group-sessions sessions workspaces)))
+        (should (eq (plist-get (car groups) :group-id) :recents))
+        (should (equal (mapcar #'dsh-protocol-session-session-id
+                               (plist-get (car groups) :sessions))
+                       (mapcar #'number-to-string
+                               (number-sequence 22 (- 23 limit) -1))))
+        ;; Shortcuts do not remove sessions from their owning workspace.
+        (should (equal (mapcar #'dsh-protocol-session-session-id
+                               (plist-get (cadr groups) :sessions))
+                       '("22" "20")))))
+    (let* ((dsh-emacs-session-recents-limit 15)
+           (dsh-emacs-session--filter-ws-id "ws")
+           (groups (dsh-emacs-session--group-sessions sessions workspaces)))
+      (should (equal (mapcar (lambda (g) (plist-get g :label)) groups)
+                     '("Recents" "Project")))
+      (should (equal (mapcar #'dsh-protocol-session-session-id
+                             (plist-get (car groups) :sessions))
+                     '("22" "20"))))
+    (let ((dsh-emacs-session-recents-limit 0))
+      (should (equal (mapcar (lambda (g) (plist-get g :label))
+                             (dsh-emacs-session--group-sessions
+                              sessions workspaces))
+                     '("Project" "Ungrouped"))))
+    (should-not (dsh-emacs-session--group-sessions nil nil))
+    (should (equal (mapcar #'dsh-protocol-session-session-id sessions)
+                   (mapcar #'number-to-string (number-sequence 1 25))))))
+
+(ert-deftest dsh-emacs-test-session-recents-row-identity-and-commands ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs-session-recents-limit 15)
+         (dsh-emacs-workspaces-collapsed-by-default nil)
+         (dsh-emacs--archived-sessions nil)
+         (dsh-emacs--current-session nil)
+         (dsh-emacs--sessions
+          (dsh-emacs-test--session-items
+           '(((sessionId . "a") (updatedAt . 20)
+              (projections (values (title . "甲会话"))))
+             ((sessionId . "b") (updatedAt . 10)
+              (projections (values (title . "乙会话")))))))
+         (dsh-emacs--workspaces
+          (list (dsh-protocol-workspace--from-alist
+                 '((workspaceId . "ws") (title . "Project")
+                   (sessionIds . ["a" "b"])))))
+         (dsh-emacs--subagent-catalogs (make-hash-table :test #'equal))
+         (cell (dsh-protocol-subagent-cell--from-alist
+                '((key . subagentCatalog) (seq . 1)
+                  (value . [((id . "child") (label . "Child")
+                             (mode . "one-shot"))])))))
+    (puthash "a" (list :state 'error
+                       :cells (list (cons 'subagentCatalog cell)))
+             dsh-emacs--subagent-catalogs)
+    (save-window-excursion
+      (with-temp-buffer
+        (setq dsh-emacs-session--expanded-subagents '("a"))
+        (set-window-buffer (selected-window) (current-buffer))
+        (dsh-emacs-session--render)
+        (should (string-match-p "▾ Recents  (2)" (buffer-string)))
+        (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                       '(:recents "a")))
+        (should (equal (dsh-emacs-workspace-id-at-point) "ws"))
+        (should (equal (dsh-emacs-workspace-title-at-point) "Project"))
+        (let (opened)
+          (cl-letf (((symbol-function 'dsh-emacs-open-session)
+                     (lambda (id) (setq opened id))))
+            (dsh-emacs-open-session-at-point))
+          (should (equal opened "a")))
+        (goto-char (dsh-emacs-session--row-pos
+                    'dsh-emacs-row-id '(:recents "child")))
+        (let (opened)
+          (cl-letf (((symbol-function 'dsh-emacs-open-subagent)
+                     (lambda (parent entry &optional _other)
+                       (setq opened (list parent
+                                          (dsh-protocol-subagent-entry-id entry))))))
+            (dsh-emacs-open-session-at-point))
+          (should (equal opened '("a" "child"))))
+        (let* ((recent (copy-marker (point)))
+               (original (copy-marker (dsh-emacs-session--row-pos
+                                       'dsh-emacs-row-id "child")))
+               (other (split-window-right)))
+          (unwind-protect
+              (progn
+                (set-window-buffer other (current-buffer))
+                (set-window-point other original)
+                (setf (dsh-protocol-session-updated-at
+                       (cadr dsh-emacs--sessions)) 30
+                       (dsh-protocol-session-title-value
+                        (car dsh-emacs--sessions)) "新的甲会话")
+                (dsh-emacs-session--render)
+                (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                               '(:recents "child")))
+                (should (equal (get-text-property (window-point other)
+                                                  'dsh-emacs-row-id)
+                               "child"))
+                (should (equal (get-text-property recent 'dsh-emacs-row-id)
+                               '(:recents "child")))
+                (should (equal (get-text-property original 'dsh-emacs-row-id)
+                               "child"))
+                (should (dsh-emacs-session--row-pos
+                         'dsh-emacs-row-id '(:recents (subagents "a"))))
+                (should (dsh-emacs-session--row-pos
+                         'dsh-emacs-row-id '(subagents "a")))
+                (let ((warm (buffer-string)))
+                  (setq dsh-emacs-session--row-cache nil)
+                  (dsh-emacs-session--render)
+                  (should (dsh-test-equal-text-p warm (buffer-string))))
+                ;; Folding one occurrence leaves the original subtree intact.
+                (goto-char (dsh-emacs-session--row-pos
+                            'dsh-emacs-row-id :recents))
+                (dsh-emacs-open-session-at-point)
+                (should (eq (get-text-property (point) 'dsh-emacs-row-id)
+                            :recents))
+                (should-not (dsh-emacs-session--row-pos
+                             'dsh-emacs-row-id '(:recents "child")))
+                (should (equal (get-text-property original 'dsh-emacs-row-id)
+                               "child"))
+                (dsh-emacs-session--render)
+                (should (dsh-emacs-session--workspace-collapsed-p :recents)))
+            (set-marker recent nil)
+            (set-marker original nil)))))))
+
+(ert-deftest dsh-emacs-test-session-recents-fold-and-rank-changes ()
+  :tags '(dsh-unit)
+  (let ((dsh-emacs-session-recents-limit 1)
+        (dsh-emacs-workspaces-collapsed-by-default t)
+        (dsh-emacs--archived-sessions (make-hash-table :test #'equal))
+        (dsh-emacs--current-session nil)
+        (dsh-emacs--subagent-catalogs (make-hash-table :test #'equal))
+        (dsh-emacs--sessions
+         (dsh-emacs-test--session-items
+          '(((sessionId . "a") (updatedAt . 20))
+            ((sessionId . "b") (updatedAt . 10)))))
+        (dsh-emacs--workspaces
+         (list (dsh-protocol-workspace--from-alist
+                '((workspaceId . "ws") (title . "Project")
+                  (sessionIds . ["a" "b"]))))))
+    (with-temp-buffer
+      (dsh-emacs-session--render)
+      (should-not (dsh-emacs-session--workspace-collapsed-p :recents))
+      (should (dsh-emacs-session--workspace-collapsed-p "ws"))
+      (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                     '(:recents "a")))
+      (dsh-emacs-collapse-workspaces)
+      (should-not (dsh-emacs-session--row-pos 'dsh-emacs-session-id "a"))
+      ;; An explicit open reveals Recents without unfolding its workspace.
+      (setq dsh-emacs-session--auto-jump-session "a")
+      (dsh-emacs-session--render)
+      (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                     '(:recents "a")))
+      (should (dsh-emacs-session--workspace-collapsed-p "ws"))
+      (should-not dsh-emacs-session--auto-jump-session)
+      (dsh-emacs-expand-workspaces)
+      (should (dsh-emacs-session--row-pos 'dsh-emacs-row-id "a"))
+      ;; Rank eviction follows the old neighboring header, not the duplicate.
+      (setf (dsh-protocol-session-updated-at (cadr dsh-emacs--sessions)) 30)
+      (dsh-emacs-session--render)
+      (should (equal (get-text-property (point) 'dsh-emacs-row-id) "ws"))
+      (should-not (dsh-emacs-session--row-pos
+                   'dsh-emacs-row-id '(:recents "a")))
+      (should (dsh-emacs-session--row-pos
+               'dsh-emacs-row-id '(:recents "b")))
+      (goto-char (dsh-emacs-session--row-pos 'dsh-emacs-row-id "b"))
+      (dsh-emacs-session--render)
+      (should (equal (get-text-property (point) 'dsh-emacs-row-id) "b"))
+      ;; Archiving removes both occurrences and promotes the next recent.
+      (puthash "b" t dsh-emacs--archived-sessions)
+      (dsh-emacs-session--render)
+      (should-not (dsh-emacs-session--row-pos 'dsh-emacs-session-id "b"))
+      (should (dsh-emacs-session--row-pos
+               'dsh-emacs-row-id '(:recents "a")))
+      (let ((dsh-emacs-session-recents-limit 0))
+        (dsh-emacs-session--render)
+        (should-not (string-match-p "Recents" (buffer-string)))
+        (should (dsh-emacs-session--row-pos 'dsh-emacs-row-id "a"))))))
+
+(ert-deftest dsh-emacs-test-session-recents-live-activity-survives-refresh ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs-session-recents-limit 15)
+         (dsh-emacs-workspaces-collapsed-by-default nil)
+         (dsh-emacs--archived-sessions nil)
+         (dsh-emacs--current-session nil)
+         (dsh-emacs--workspaces nil)
+         (dsh-emacs--subagent-catalogs (make-hash-table :test #'equal))
+         (dsh-emacs--host-refresh-depth 0)
+         (dsh-emacs--host-refresh-frames nil)
+         (dsh-emacs--sessions
+          (dsh-emacs-test--session-items
+           (cl-loop for n from 1 to 16
+                    collect `((sessionId . ,(format "s%d" n))
+                              (updatedAt . ,n)))))
+         (snapshot (mapcar #'copy-dsh-protocol-session dsh-emacs--sessions)))
+    (with-temp-buffer
+      (let ((dsh-emacs-sessions-buffer (buffer-name)))
+        (dsh-emacs-session--render)
+        (should-not (dsh-emacs-session--row-pos
+                     'dsh-emacs-row-id '(:recents "s1")))
+        (dsh-emacs-events--host-refresh-begin)
+        (dsh-emacs-events--host-refresh-begin)
+        (dsh-emacs-events--host-item
+         nil '((type . "emit") (event . "api-session/activity")
+               (args . ["s1" 100])))
+        (should (= 100 (dsh-protocol-session-updated-at
+                        (dsh-emacs--chat-session-item "s1"))))
+        (should (equal (get-text-property
+                        (dsh-emacs-session--first-row-pos t) 'dsh-emacs-row-id)
+                       '(:recents "s1")))
+        (should (dsh-emacs-session--row-pos 'dsh-emacs-row-id "s1"))
+        ;; The event repaint preserves the focused occurrence.
+        (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                       '(:recents "s16")))
+        (dsh-emacs-events--host-item
+         nil (dsh-protocol-core-item--from-alist
+              '((type . "emit") (event . "api-session/activity")
+                (args . ["s2" 200]))))
+        ;; An older frame cannot undo the last activity or change cache order.
+        (dsh-emacs-events--host-item
+         nil '((type . "emit") (event . "api-session/activity")
+               (args . ["s1" 90])))
+        (should (= 100 (dsh-protocol-session-updated-at
+                        (dsh-emacs--chat-session-item "s1"))))
+        (should (equal (dsh-protocol-session-session-id
+                        (car dsh-emacs--sessions)) "s2"))
+        (setq dsh-emacs--sessions snapshot)
+        (dsh-emacs-events--host-refresh-drain)
+        (should (= 1 dsh-emacs--host-refresh-depth))
+        (should (= 3 (length dsh-emacs--host-refresh-frames)))
+        (dsh-emacs-events--host-refresh-drain)
+        (should (= 100 (dsh-protocol-session-updated-at
+                        (dsh-emacs--chat-session-item "s1"))))
+        (should (= 200 (dsh-protocol-session-updated-at
+                        (dsh-emacs--chat-session-item "s2"))))
+        (should (equal (get-text-property
+                        (dsh-emacs-session--first-row-pos t) 'dsh-emacs-row-id)
+                       '(:recents "s2")))
+        (should (dsh-emacs-session--row-pos
+                 'dsh-emacs-row-id '(:recents "s1")))
+        (should-not dsh-emacs--host-refresh-frames)
+        (should (= 0 dsh-emacs--host-refresh-depth))))))
+
+;; Workspace-only folding tests disable Recents; shortcut navigation has its
+;; own coverage so a visible shortcut cannot mask a missing workspace row.
+
 ;; --- Test 51: session list workspace filtering ---
 (ert-deftest dsh-emacs-test-session-session-filter-restricts-workspace ()
   :tags '(dsh-unit)
@@ -136,15 +397,16 @@ window's own point behind, which the session list now preserves per window."
            (dsh-emacs-session--filter-ws-id "w1")
            (filtered (dsh-emacs-session--group-sessions sessions-s workspaces-s)))
       (ert-info ((format "%s" "session-filter-restricts-workspace"))
-        (should (and (= 1 (length filtered))
-                     (equal "WS A" (plist-get (car filtered) :label))
+        (should (and (= 2 (length filtered))
+                     (equal "Recents" (plist-get (car filtered) :label))
+                     (equal "WS A" (plist-get (cadr filtered) :label))
                      (= 2 (length (plist-get (car filtered) :sessions)))))))
     ;; No filter: both WS A and Ungrouped buckets present
     (let* ((dsh-emacs--archived-sessions nil)
            (dsh-emacs-session--filter-ws-id nil)
            (grouped (dsh-emacs-session--group-sessions sessions-s workspaces-s)))
       (ert-info ((format "%s" "session-group-keeps-ungrouped"))
-        (should (and (= 2 (length grouped))
+        (should (and (= 3 (length grouped))
                      (cl-some (lambda (g) (equal "WS A" (plist-get g :label))) grouped)
                      (cl-some (lambda (g) (equal "Ungrouped" (plist-get g :label))) grouped)))))
     ;; Render level: while filtering, other workspaces / ungrouped
@@ -178,7 +440,8 @@ window's own point behind, which the session list now preserves per window."
 
 (ert-deftest dsh-emacs-test-session-workspace-fold-keeps-header-focused ()
   :tags '(dsh-unit)
-  (let* ((sessions (dsh-emacs-test--session-items
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (sessions (dsh-emacs-test--session-items
                     (list (list (cons 'sessionId "s1") (cons 'updatedAt 100)
                                 (cons 'projections
                                       (list (cons 'values
@@ -219,7 +482,8 @@ window's own point behind, which the session list now preserves per window."
 
 (ert-deftest dsh-emacs-test-session-ungrouped-fold-hides-session ()
   :tags '(dsh-unit)
-  (let* ((sessions (dsh-emacs-test--session-items
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (sessions (dsh-emacs-test--session-items
                     (list (list (cons 'sessionId "loose")
                                 (cons 'updatedAt 100)
                                 (cons 'projections
@@ -302,7 +566,8 @@ window's own point behind, which the session list now preserves per window."
 ;; --- Test 51d: a target inside a folded group expands just that group ---
 (ert-deftest dsh-emacs-test-session-auto-jump-fold-hides-rows ()
   :tags '(dsh-unit)
-  (let* ((sessions (dsh-emacs-test--session-items
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (sessions (dsh-emacs-test--session-items
                     (list (list (cons 'sessionId "a1") (cons 'updatedAt 100)
                                 (cons 'cwd "/tmp/ws-a")
                                 (cons 'projections
@@ -349,7 +614,8 @@ window's own point behind, which the session list now preserves per window."
 ;; just the current buffer's point.
 (ert-deftest dsh-emacs-test-session-window-row-survives-render ()
   :tags '(dsh-unit)
-  (let* ((sessions (dsh-emacs-test--session-items
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (sessions (dsh-emacs-test--session-items
                     (list (list (cons 'sessionId "s1") (cons 'updatedAt 300)
                                 (cons 'cwd "/tmp/ws-a")
                                 (cons 'projections
@@ -601,7 +867,8 @@ window's own point behind, which the session list now preserves per window."
 ;; came back expanded on the next `C-c C-l'.
 (ert-deftest dsh-emacs-test-session-reopen-keeps-folded-group ()
   :tags '(dsh-unit)
-  (let ((dsh-emacs--current-session "s1")
+  (let ((dsh-emacs-session-recents-limit 0)
+        (dsh-emacs--current-session "s1")
         (dsh-emacs--archived-sessions nil))
     (unwind-protect
         (cl-letf (((symbol-function 'dsh-emacs-list-sessions) #'ignore)
@@ -654,7 +921,8 @@ window's own point behind, which the session list now preserves per window."
 
 (ert-deftest dsh-emacs-test-session-workspace-fold-default-collapsed ()
   :tags '(dsh-unit)
-  (let* ((sessions (dsh-emacs-test--session-items
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (sessions (dsh-emacs-test--session-items
                     (list (list (cons 'sessionId "default-loose")
                                 (cons 'updatedAt 100)
                                 (cons 'projections
@@ -705,7 +973,7 @@ window's own point behind, which the session list now preserves per window."
              (members (and ungrouped (plist-get ungrouped :sessions)))
              (ids (mapcar #'dsh-protocol-session-session-id members)))
         (ert-info ((format "%s" "subagent-session-hidden-from-list"))
-          (should (and (= (length grouped) 1)
+          (should (and (= (length grouped) 2)
                        (equal ids '("s2")))))))))
 
 ;; --- Test 61: blank sessions keep only the current session ---
@@ -942,7 +1210,8 @@ window's own point behind, which the session list now preserves per window."
 ;; Visual row reuse must preserve mutable inputs and current command targets.
 (ert-deftest dsh-emacs-test-session-session-row-cache ()
   :tags '(dsh-unit)
-  (let* ((now 1000.0)
+  (let* ((dsh-emacs-session-recents-limit 0)
+         (now 1000.0)
          (title (copy-sequence "Original title"))
          (dsh-emacs--sessions
           (list (dsh-protocol-session--from-alist

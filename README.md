@@ -50,8 +50,11 @@ before connecting. A `use-package` example is in
 
 ## Using it
 
-`M-x dsh-emacs` lists sessions by workspace. Press `RET` to open a session,
-`c` to create one, and `TAB` to fold a workspace or expand available subagents.
+`M-x dsh-emacs` opens the session list with **Recents** first: the 15 most
+recently updated visible sessions, followed by their usual workspace groups.
+Set `dsh-emacs-session-recents-limit` to change the count (zero hides Recents).
+Press `RET` to open a session, `c` to create one, and `TAB` to fold a group
+or expand available subagents.
 From a local project, the command locates its existing workspace; from a chat,
 it locates that session. New sessions open an editable draft while connecting.
 Opening an existing session in a fresh chat buffer completes only the latest

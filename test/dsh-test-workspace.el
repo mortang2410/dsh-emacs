@@ -697,7 +697,7 @@
                      (mapcar #'dsh-protocol-session-session-id
                              dsh-emacs--sessions)))
       (should-not (dsh-protocol-session-running (car dsh-emacs--sessions)))
-      (should (= 9 (dsh-protocol-session-updated-at (car dsh-emacs--sessions))))
+      (should (= 123 (dsh-protocol-session-updated-at (car dsh-emacs--sessions))))
       (let ((frame '((type . "emit") (event . "api-session/removed")
                      (args . ["b"]))))
         (dsh-emacs-events--host-item
@@ -707,7 +707,7 @@
                              dsh-emacs--sessions)))
       ;; Cache mutations must not rewrite the original added-notice payload.
       (setf (dsh-protocol-session-title (car dsh-emacs--sessions)) "Cache only")
-      (should (= 4 (length dsh-emacs--host-refresh-frames)))
+      (should (= 5 (length dsh-emacs--host-refresh-frames)))
       (setq dsh-emacs--sessions nil)
       (dsh-emacs-events--host-refresh-drain)
       (should (equal '("a")
@@ -715,6 +715,7 @@
                              dsh-emacs--sessions)))
       (should (equal "Original A"
                      (dsh-protocol-session-title (car dsh-emacs--sessions))))
+      (should (= 123 (dsh-protocol-session-updated-at (car dsh-emacs--sessions))))
       (should-not (dsh-protocol-session-running (car dsh-emacs--sessions)))
       (should-not dsh-emacs--host-refresh-frames)
       (should (= 0 dsh-emacs--host-refresh-depth)))))

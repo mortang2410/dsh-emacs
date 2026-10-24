@@ -446,9 +446,9 @@
       (ert-info ((format "%s" "session-unknown-catalog-has-no-disclosure"))
         (should (not (string-match-p "[▸▾] .*会话" (buffer-string)))))
       (let ((first (copy-marker (dsh-emacs-session--row-pos
-                                 'dsh-emacs-session-id "row-3")))
+                                 'dsh-emacs-row-id "row-3")))
             (last (copy-marker (+ 8 (dsh-emacs-session--row-pos
-                                     'dsh-emacs-session-id "row-17")))))
+                                     'dsh-emacs-row-id "row-17")))))
         (setq dsh-emacs--workspaces (reverse dsh-emacs--workspaces))
         (setf (dsh-protocol-session-title-value (nth 9 dsh-emacs--sessions))
               "Changed title")
@@ -460,8 +460,8 @@
         (ert-info ((format "%s" "session-regroup-only-diffs-individual-rows"))
           (should (< largest-diff 150)))
         (ert-info ((format "%s" "session-regroup-preserves-xref-row-identities"))
-          (should (equal (get-text-property first 'dsh-emacs-session-id) "row-3"))
-          (should (equal (get-text-property last 'dsh-emacs-session-id) "row-17"))
+          (should (equal (get-text-property first 'dsh-emacs-row-id) "row-3"))
+          (should (equal (get-text-property last 'dsh-emacs-row-id) "row-17"))
           (should (< last first)))
         (ert-info ((format "%s" "session-regroup-updates-title-and-workspace-order"))
           (should (string-match-p "Changed title" (buffer-string)))
@@ -479,7 +479,7 @@
                           (car (last dsh-emacs--workspaces))))
         (dsh-emacs-session--render)
         (ert-info ((format "%s" "session-insert-before-departure-keeps-original-row"))
-          (should (equal (get-text-property first 'dsh-emacs-session-id) "row-3")))
+          (should (equal (get-text-property first 'dsh-emacs-row-id) "row-3")))
         (let ((transpose (symbol-function 'transpose-regions))
               (moves 0))
           (goto-char (dsh-emacs-session--row-pos
@@ -492,14 +492,14 @@
           (ert-info ((format "%s" "session-collapse-deletes-hidden-rows-without-moving-survivors"))
             (should (= moves 0))
             (should (null (dsh-emacs-session--row-pos
-                           'dsh-emacs-session-id "row-17")))
-            (should (equal (get-text-property first 'dsh-emacs-session-id) "row-3"))
+                           'dsh-emacs-row-id "row-17")))
+            (should (equal (get-text-property first 'dsh-emacs-row-id) "row-3"))
             (should (equal (get-text-property (point) 'dsh-emacs-workspace-group-id)
                            "workspace-3")))
           (dsh-emacs-session-toggle-workspace)
           (ert-info ((format "%s" "session-expand-restores-hidden-rows-with-survivor-markers"))
-            (should (dsh-emacs-session--row-pos 'dsh-emacs-session-id "row-17"))
-            (should (equal (get-text-property first 'dsh-emacs-session-id) "row-3"))))
+            (should (dsh-emacs-session--row-pos 'dsh-emacs-row-id "row-17"))
+            (should (equal (get-text-property first 'dsh-emacs-row-id) "row-3"))))
         (set-marker first nil)
         (set-marker last nil))
       (let ((cell (dsh-protocol-subagent-cell--from-alist
@@ -509,7 +509,7 @@
         (puthash "row-0" (list :cells (list (cons 'subagentCatalog cell)))
                  dsh-emacs--subagent-catalogs)
         (dsh-emacs-session--render)
-        (goto-char (dsh-emacs-session--row-pos 'dsh-emacs-session-id "row-0"))
+        (goto-char (dsh-emacs-session--row-pos 'dsh-emacs-row-id "row-0"))
         (ert-info ((format "%s" "session-known-children-show-disclosure"))
           (should (string-match-p "▸" (buffer-substring (point) (line-end-position)))))
         (setq dsh-emacs-session--expanded-subagents '("row-0"))
@@ -520,7 +520,7 @@
                                                (point) (line-end-position)))))
           (should (not (string-match-p "No subagents" (buffer-string))))
           (should (null (dsh-emacs-session--row-pos
-                         'dsh-emacs-session-id "child"))))))))
+                         'dsh-emacs-row-id "child"))))))))
 
 ;; Inline child rows use the same catalog and direct-parent navigation as chats.
 (ert-deftest dsh-emacs-test-subagent-session-children-start-collapsed ()

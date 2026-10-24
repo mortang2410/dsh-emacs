@@ -663,7 +663,9 @@ protocol field changes stay in the decoder. Covered payloads:
   See [129](../postmortem/129-core-workspace-boundary.md).
 - `$events` ready/cancel payloads become ids; session emits become
   `dsh-protocol-session-notice` (name, session-id, value). Running flags are
-  decoded booleans. Added summaries stay raw until cache application so the
+  decoded booleans; activity values retain the host timestamp, which events
+  applies monotonically to cached session times and records for refresh replay.
+  Added summaries stay raw until cache application so the
   refresh record cannot share a mutable session object with the cache.
   Waterfalls become `dsh-protocol-waterfall` (name, event-id, agent-id, request).
   Only a request routed to a live chat is decoded: approvals use their existing

@@ -4,6 +4,30 @@
 
 (require 'dsh-test-support)
 
+(ert-deftest dsh-emacs-test-events-activity-replay-keeps-newest-timestamp ()
+  :tags '(dsh-unit)
+  (dolist (snapshot-time '(nil 50 150))
+    (let ((dsh-emacs--sessions nil)
+          (dsh-emacs-sessions-buffer nil)
+          (dsh-emacs--host-refresh-depth 0)
+          (dsh-emacs--host-refresh-frames nil))
+      (dsh-emacs-events--host-refresh-begin)
+      ;; A cold list must retain the event until its session summary arrives.
+      (dsh-emacs-events--host-item
+       nil '((type . "emit") (event . "api-session/activity")
+             (args . ["active" 100])))
+      (should-not dsh-emacs--sessions)
+      (should (equal dsh-emacs--host-refresh-frames
+                     '((:session-activity "active" 100))))
+      (setq dsh-emacs--sessions
+            (dsh-emacs-test--session-items
+             `(((sessionId . "active") (updatedAt . ,snapshot-time)))))
+      (dsh-emacs-events--host-refresh-drain)
+      (should (= (dsh-protocol-session-updated-at (car dsh-emacs--sessions))
+                 (max 100 (or snapshot-time 0))))
+      (should-not dsh-emacs--host-refresh-frames)
+      (should (= 0 dsh-emacs--host-refresh-depth)))))
+
 (ert-deftest dsh-emacs-test-events-model-selection-projections-update-chat-and-cache ()
   :tags '(dsh-unit)
   (dolist (route '(increment control follow))

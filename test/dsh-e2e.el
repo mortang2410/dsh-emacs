@@ -842,7 +842,11 @@ DSH_E2E_PRESET selects the preset; existing chats and connections are preserved.
                     10))
 
                   (let ((message (format "dsh-emacs e2e transport probe %s"
-                                         (float-time))))
+                                         (float-time)))
+                        (previous-activity
+                         (or (dsh-protocol-session-updated-at
+                              (dsh-emacs--chat-session-item dsh-e2e--session-id))
+                             0)))
                     (goto-char dsh-emacs--input-marker)
                     (insert message)
                     (dsh-emacs-send-or-stop)
@@ -860,7 +864,15 @@ DSH_E2E_PRESET selects the preset; existing chats and connections are preserved.
                                        (with-current-buffer dsh-e2e--chat
                                          (string-match-p (regexp-quote message)
                                                          (buffer-string))))
-                                     10)))
+                                     10))
+                    (dsh-e2e--check
+                     "send-message-advances-activity"
+                     (dsh-e2e--wait-until
+                      (lambda ()
+                        (> (dsh-protocol-session-updated-at
+                            (dsh-emacs--chat-session-item dsh-e2e--session-id))
+                           previous-activity))
+                      10)))
 
                   (dsh-e2e--rpc
                    "session/cancel"

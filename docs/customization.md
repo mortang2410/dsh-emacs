@@ -122,6 +122,7 @@ The most commonly used options, straight in your config:
 (setq dsh-emacs-attach-max-file-size (* 32 1024 1024)) ; largest staged file, in bytes; checked again at upload (nil = no limit; inline images are not governed by it)
 (setq dsh-emacs-render-image-thumbnail-lines 4)     ; height of one transcript image thumbnail, in text lines (dsh web uses 64px tiles); a lone image uses the same gallery style
 (setq dsh-emacs-session-auto-refresh-interval nil) ; seconds between automatic session-list refreshes (nil = off)
+(setq dsh-emacs-session-recents-limit 15)          ; latest updated sessions in the leading Recents group (0 = hide)
 (setq dsh-emacs-workspaces-collapsed-by-default nil) ; workspace and Ungrouped groups start expanded (t = collapsed); TAB/RET overrides a group in the current list buffer
 (setq dsh-emacs-composer-goal-actions t)             ; show pause/resume/edit/clear buttons on the Goal Row (nil = hide them; C-c C-g keys still work; C-c C-g a / dsh-emacs-goal-actions-toggle toggles the current buffer)
 (setq dsh-emacs-reference-auto-complete t)          ; typing "@" in the input pops the file/directory/session reference menu (TAB and M-x dsh-emacs-reference always work; see docs/reference.md)
@@ -296,11 +297,11 @@ These default keys apply in the session list opened by `M-x dsh-emacs`:
 | `u` | Restore an archived session (pick from the archive set) |
 | `/` | Search |
 | `g` | Refresh |
-| `TAB` | Toggle a workspace header or a session's direct subagents |
+| `TAB` | Toggle a group header or a session's direct subagents |
 | `W` | Create a workspace |
 | `R` | Rename the workspace under point |
 | `D` | Delete the workspace under point |
-| `M` | Move the session under point to another workspace |
+| `M` | Reorder the workspace under point |
 | `w` | Filter by workspace; empty input clears the filter |
 
 ### Forking conversations
@@ -328,10 +329,19 @@ The same `session/rename` RPC is available without leaving a chat buffer:
 picker), prefilled with its current title; outside a chat buffer it asks for
 the session with completion.
 
+`Recents` leads the list with the 15 most recently updated visible sessions,
+newest first. `dsh-emacs-session-recents-limit` changes the count; zero hides
+the group. The same sessions remain in their workspace or `Ungrouped` group.
+Recents respects the `w` workspace filter and excludes archived sessions,
+sessions of subagent origin and blank sessions other than the current one. Its rows
+retain their actual workspace context for commands such as `c`, `R` and `M`.
+Subagent expansion is shared between both occurrences of a session.
+
 Workspace and `Ungrouped` groups start expanded by default. Set
-`dsh-emacs-workspaces-collapsed-by-default` to non-nil to start with all
-groups collapsed. `M-x dsh-emacs-collapse-workspaces` and
-`M-x dsh-emacs-expand-workspaces` fold or unfold every group in the list.
+`dsh-emacs-workspaces-collapsed-by-default` to non-nil to start those groups
+collapsed; Recents initially stays expanded. `TAB` or `RET` on any group
+header overrides its fold state. `M-x dsh-emacs-collapse-workspaces` and
+`M-x dsh-emacs-expand-workspaces` fold or unfold every group, including Recents.
 
 Subagents start collapsed beneath their parent session. `TAB` on a session
 row expands its direct children; repeat on a child to reveal nested children.
@@ -365,8 +375,9 @@ which controls new-session creation only.
 
 Opening the list from a chat (`M-x dsh-emacs`, `C-c C-l`) puts the cursor on
 that chat's session row, even after switching back from a more recently
-opened chat, and scrolls it into view; for a subagent, its
-ancestors and workspace are expanded. When a session sits in a folded group, the group
+opened chat, and scrolls it into view. It prefers the Recents occurrence when
+present, otherwise the workspace occurrence; for a subagent, its ancestors
+and the containing group are expanded. When a session sits in a folded group, the group
 is unfolded to show it, and a `w` workspace filter that
 would hide the row is cleared. Refreshing the list in place (`g`, events,
 auto-refresh) instead keeps the row you are on. If archiving or deleting removes

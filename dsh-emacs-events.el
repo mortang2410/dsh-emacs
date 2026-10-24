@@ -1238,6 +1238,9 @@ repaint themselves here; the drain batches them and repaints once."
     (:session-status
      (dsh-emacs-events--host-session-status
       (cadr frame) (car (cddr frame))))
+    (:session-activity
+     (dsh-emacs-events--host-session-activity
+      (cadr frame) (car (cddr frame))))
     (:apply-model-selection
      (dsh-emacs-events--apply-model-projection
       (cadr frame) (car (cddr frame))))
@@ -1443,10 +1446,10 @@ retires a pending waterfall by `eventId'."
               (dsh-emacs-events--host-frame-record
                (list :session-status session-id payload))))
            ("api-session/activity"
-            ;; Activity bumps the cached row to the front; it is not recorded
-            ;; for refresh replay and does not overwrite the stored timestamp.
             (when session-id
-              (dsh-emacs-events--host-session-activity session-id)))
+              (dsh-emacs-events--host-session-activity session-id payload)
+              (dsh-emacs-events--host-frame-record
+               (list :session-activity session-id payload))))
            (_ nil))))
       ("waterfall"
        ;; Approval / question waterfalls arrive on `$events' and are answered
@@ -1579,10 +1582,13 @@ mode-line state."
         (with-current-buffer buf
           (dsh-emacs-composer-set-goal goal))))))
 
-(defun dsh-emacs-events--host-session-activity (session-id)
-  "Bump SESSION-ID to the front of the cached session list (recent first)."
+(defun dsh-emacs-events--host-session-activity (session-id updated-at)
+  "Advance SESSION-ID's cached activity time to UPDATED-AT and repaint.
+Ignore older or repeated timestamps, including refresh replay over a newer
+snapshot.  UPDATED-AT is the host's timestamp in milliseconds."
   (let ((item (dsh-emacs--chat-session-item session-id)))
-    (when (and item (listp dsh-emacs--sessions))
+    (when (and item (> updated-at (or (dsh-protocol-session-updated-at item) 0)))
+      (setf (dsh-protocol-session-updated-at item) updated-at)
       (setq dsh-emacs--sessions
             (cons item (delq item dsh-emacs--sessions)))
       (dsh-emacs-events--host-repaint))))
