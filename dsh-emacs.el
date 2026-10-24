@@ -635,7 +635,8 @@ known value."
                                       ;; Refresh workspaces in parallel so the
                                       ;; session list can group by workspace.
                                       (dsh-emacs-list-workspaces))
-                                  (message "Failed to fetch session list: %S" value))
+                                  (message "Failed to fetch session list: %s"
+                                           (dsh-emacs-rpc-error-text value)))
                               ;; Snapshot installed: replay any frame that arrived
                               ;; while the refresh was in flight, so the list never
                               ;; rolls back below the stream's latest state.
@@ -797,7 +798,7 @@ clearing the draft, using the last session identity confirmed by the server."
                    ((error quit) (fail (error-message-string err))))))))
          (created (ok value)
            (if (not ok)
-               (fail (format "%S" value))
+               (fail (dsh-emacs-rpc-error-text value))
              (widen)
              (let* ((session (dsh-protocol-session--from-alist value))
                     (sid (dsh-protocol-session-session-id session))
@@ -852,7 +853,8 @@ clearing the draft, using the last session identity confirmed by the server."
             (lambda (ok value) (step #'created ok value))))
          (workspace-created (ok value)
            (if (not ok)
-               (fail (format "Workspace creation: %S" value))
+               (fail (format "Workspace creation: %s"
+                             (dsh-emacs-rpc-error-text value)))
              (let ((ws (dsh-protocol-workspace-result-workspace
                         (dsh-protocol-workspace-result--from-alist value))))
                (unless ws (error "Workspace creation returned no workspace"))
@@ -1046,9 +1048,7 @@ cancels the whole session creation."
     (let ((res (dsh-emacs--rpc-request "agentPresets/list" nil)))
       (unless (car res)
         (user-error "Could not load the agent preset list: %s"
-                    (or (dsh-protocol-error-message--from-alist (cdr res))
-                        (cdr res)
-                        "no response")))
+                    (dsh-emacs-rpc-error-text (cdr res))))
       (setq dsh-emacs--agent-presets
             (dsh-protocol-agent-preset-list--from-alist (cdr res)))))
   (let ((choices (dsh-emacs--preset-choices)))
@@ -1674,6 +1674,18 @@ that leaves nothing to choose, signal EMPTY-MESSAGE instead of letting
       (user-error "%s" (or empty-message "No session to choose from")))
     (cdr (assoc (completing-read prompt entries nil t) entries))))
 
+(defun dsh-emacs--fork-failure-text (value)
+  "Explain a failed `session/fork' with error VALUE.
+An unavailable-preset error also lists the preset ids the server does
+provide; every other failure uses the generic RPC error text."
+  (let ((preset-error
+         (dsh-protocol-agent-preset-error--from-alist value)))
+    (if (and preset-error (cdr preset-error))
+        (format "%s; available presets: %s"
+                (dsh-emacs-rpc-error-text value)
+                (string-join (cdr preset-error) ", "))
+      (dsh-emacs-rpc-error-text value))))
+
 ;;;###autoload
 (defun dsh-emacs-fork-session (session-id &optional at-seq)
   "Fork SESSION-ID into a new child session that inherits its history.
@@ -1689,7 +1701,8 @@ list refreshes and the child buffer opens with the same workspace path."
                         (dsh-protocol-session-fork-request session-id at-seq)
                         (lambda (ok value)
                           (if (not ok)
-                              (message "Failed to fork session: %S" value)
+                              (message "Failed to fork session: %s"
+                                       (dsh-emacs--fork-failure-text value))
                             (let ((child-id
                                    (dsh-protocol-session-session-id
                                     (dsh-protocol-session--from-alist value))))
@@ -1768,7 +1781,8 @@ inverse.  Refreshes the archived set and the session list on success."
                                         (dsh-protocol-archived-set--from-alist value))))
                                 (dsh-emacs-list-sessions)
                                 (message "Session archived"))
-                            (message "Failed to archive: %S" value)))))
+                            (message "Failed to archive: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 (defun dsh-emacs--archived-session-p (session)
   "Whether SESSION is in the cached archived set."
@@ -1799,7 +1813,8 @@ and the session list."
                                         (dsh-protocol-archived-set--from-alist value))))
                                 (dsh-emacs-list-sessions)
                                 (message "Session restored"))
-                            (message "Failed to restore session: %S" value)))))
+                            (message "Failed to restore session: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 (defun dsh-emacs-rename-session (session-id new-title)
   "Rename session SESSION-ID to NEW-TITLE.
@@ -1823,7 +1838,8 @@ title prompt is prefilled with the session's current title."
                               (progn
                                 (dsh-emacs-list-sessions)
                                 (message "Session renamed"))
-                            (message "Failed to rename: %S" value)))))
+                            (message "Failed to rename: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;;  Workspace management
@@ -1868,7 +1884,8 @@ no immediate re-baseline is attempted on a not-yet-handshaken socket."
                               (progn
                                 (dsh-emacs-list-workspaces)
                                 (message "Workspace created"))
-                            (message "Failed to create workspace: %S" value)))))
+                            (message "Failed to create workspace: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;;;###autoload
 (defun dsh-emacs-rename-workspace (workspace-id new-title)
@@ -1884,7 +1901,8 @@ no immediate re-baseline is attempted on a not-yet-handshaken socket."
                               (progn
                                 (dsh-emacs-list-workspaces)
                                 (message "Workspace renamed"))
-                            (message "Failed to rename: %S" value)))))
+                            (message "Failed to rename: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;;;###autoload
 (defun dsh-emacs-delete-workspace (workspace-id)
@@ -1902,7 +1920,8 @@ no immediate re-baseline is attempted on a not-yet-handshaken socket."
                               (progn
                                 (dsh-emacs-list-workspaces)
                                 (message "Workspace deleted"))
-                            (message "Failed to delete: %S" value)))))
+                            (message "Failed to delete: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;;;###autoload
 (defun dsh-emacs-move-workspace (workspace-id before-workspace-id)
@@ -1946,7 +1965,8 @@ repaints)."
                                     ;; membership/order stays authoritative.
                                     (dsh-emacs-list-workspaces)))
                                 (message "Workspace reordered"))
-                            (message "Failed to reorder: %S" value)))))
+                            (message "Failed to reorder: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;;  Chat mode
@@ -2499,7 +2519,8 @@ until the next wake (see `dsh-emacs-list-queue')."
                                   (message (if dsh-emacs--buffer-subagent
                                                "⏸ Stop requested"
                                              "⏸ Turn interrupted")))
-                              (message "Failed to interrupt: %S" value))))))
+                              (message "Failed to interrupt: %s"
+                                       (dsh-emacs-rpc-error-text value)))))))
 
 (defun dsh-emacs-send-or-stop ()
   "Send the input as a message, or act on the running turn.
@@ -2771,8 +2792,8 @@ is not recorded for `M-p' recall: every submit path skips it."
              ;; unless a newer draft has taken its place.
              (dsh-emacs--restore-draft message attachments)
              (message "File upload failed: %s"
-                      (or (dsh-protocol-error-message--from-alist err)
-                          err "transport error"))))))
+                      (if err (dsh-emacs-rpc-error-text err)
+                        "transport error"))))))
     (dsh-emacs--submit-dispatch
      message :parts (delq nil (mapcar #'dsh-protocol-image-content-part
                                     attachments))
@@ -2837,8 +2858,9 @@ once every staged file has become a receipt."
                    (with-current-buffer input-buffer
                      (dsh-emacs-render-command-cleanup-optimistic)
                      (dsh-emacs--restore-draft message staged)))
-                 (message "Command failed to run: %S"
-                          (or err "transport error")))
+                 (message "Command failed to run: %s"
+                          (if err (dsh-emacs-rpc-error-text err)
+                            "transport error")))
                 ((null execution)
                  ;; Not in the registry → clear the optimistic row and send
                  ;; it as an ordinary message (browser semantics); history was
@@ -2931,7 +2953,8 @@ against); genuinely parked items keep their feedback."
                               ;; splice/claim frames that would settle the
                               ;; suppression: clear it here (idempotent).
                               (dsh-emacs-queue--submit-suppress-clear)
-                              (message "Failed to submit: %S" value)
+                              (message "Failed to submit: %s"
+                                       (dsh-emacs-rpc-error-text value))
                               ;; Nothing will consume the text, put it back
                               ;; (same restore as the command path).
                               (when (buffer-live-p input-buffer)
@@ -3064,7 +3087,8 @@ input and staged attachments are empty (a newer draft is left alone)."
                                                     dsh-emacs--event-process))
                                           (dsh-emacs-events-connect
                                            (current-buffer)))))))
-                              (message "Failed to send: %S" value)
+                              (message "Failed to send: %s"
+                                       (dsh-emacs-rpc-error-text value))
                               ;; The server rejected the prompt, so no
                               ;; `user/message' will ever arrive to consume the
                               ;; optimistic entry; drop it, lest the same text
@@ -3837,7 +3861,8 @@ immediately."
     (dsh-emacs--rpc-async "session/modelCatalog" nil
                           (lambda (ok value)
                             (if (not ok)
-                                (message "Failed to list models: %S" value)
+                                (message "Failed to list models: %s"
+                                         (dsh-emacs-rpc-error-text value))
                               (dsh-emacs--select-model-prompt
                                session-id value))))))
 
@@ -4011,7 +4036,8 @@ the filter as \"error in process filter: Quit\"."
                                (if effort-id
                                    (format ", effort %s" effort-id)
                                  "")))
-                  (message "Failed to switch model: %S" value2))))))))
+                  (message "Failed to switch model: %s"
+                           (dsh-emacs-rpc-error-text value2)))))))))
     (quit (message "Model selection cancelled"))))
 
 ;;;###autoload
@@ -4031,7 +4057,8 @@ updates immediately."
     (dsh-emacs--rpc-async "session/modelCatalog" nil
                           (lambda (ok value)
                             (if (not ok)
-                                (message "Failed to list models: %S" value)
+                                (message "Failed to list models: %s"
+                                         (dsh-emacs-rpc-error-text value))
                               (dsh-emacs--select-effort-prompt
                                session-id value))))))
 
@@ -4089,8 +4116,8 @@ model declares no `reasoning' options; C-g cancels the whole read."
                          ;; Refresh it just as the model picker does.
                          (dsh-emacs-list-sessions--fetch)
                          (message "Reasoning effort set to %s" effort-id))
-                     (message "Failed to set reasoning effort: %S"
-                              value2)))))))))))
+                     (message "Failed to set reasoning effort: %s"
+                              (dsh-emacs-rpc-error-text value2))))))))))))
     (quit (message "Reasoning-effort selection cancelled"))))
 
 ;;;###autoload
@@ -4112,7 +4139,8 @@ reports when the effective knobs match no preset, not a switch target."
      "permissionPresets/catalog" nil
      (lambda (ok value)
        (if (not ok)
-           (message "Failed to list permission presets: %S" value)
+           (message "Failed to list permission presets: %s"
+                    (dsh-emacs-rpc-error-text value))
          (dsh-emacs--set-permission-prompt session-id value))))))
 
 (defun dsh-emacs--set-permission-prompt (session-id value)
@@ -4146,8 +4174,9 @@ inside the async RPC callback (a process filter), so a C-g during
                (lambda (ok execution err)
                  (cond
                   ((null ok)
-                   (message "Permission switch failed: %S"
-                            (or err "transport error")))
+                   (message "Permission switch failed: %s"
+                            (if err (dsh-emacs-rpc-error-text err)
+                              "transport error")))
                   ((null execution)
                    (message "The host did not admit /permission"))
                   (t
@@ -4558,7 +4587,8 @@ matching runs only for a local server and a non-remote directory."
                         (lambda (ok value)
                           (if ok
                               (message "dsh service is running")
-                            (message "dsh service unreachable: %S" value)))))
+                            (message "dsh service unreachable: %s"
+                                     (dsh-emacs-rpc-error-text value))))))
 
 ;; ---------------------------------------------------------------------------
 ;;  User question/approval waterfall ($events) responses

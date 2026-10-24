@@ -183,7 +183,8 @@ failed, canceled and superseded requests can therefore be retried safely."
                      (condition-case err
                          (progn
                            (unless (and ok (listp value))
-                             (error "History request failed: %S" value))
+                             (error "History request failed: %s"
+                                    (dsh-emacs-rpc-error-text value)))
                            (unless (and (equal dsh-emacs--buffer-session
                                                (plist-get request :session))
                                         (equal dsh-emacs--buffer-subagent

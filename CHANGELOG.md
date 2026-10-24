@@ -24,6 +24,10 @@ minor) and stay undated until the release is cut.
   immediately. Activity received during a list refresh survives its snapshot,
   and older events cannot roll back newer timestamps. (rationale: postmortem/154)
 
+- **Readable RPC errors**: failed requests now report the server's message and
+  error code instead of the raw error alist. A fork refused because the source
+  session's preset no longer exists also lists the presets the server provides.
+
 ### Changed
 
 - **Preset picker uses server labels**: new-session preset choices show a

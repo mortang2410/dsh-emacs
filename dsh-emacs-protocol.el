@@ -322,8 +322,9 @@ to the renderer.  SEQ advances replay even when no file is usable."
                (:constructor dsh-protocol-rpc-error--from-alist
                              (alist &aux
                                     (code (dsh-protocol--field 'code alist))
-                                    (message (dsh-protocol--field 'message alist)))))
-  code message)
+                                    (message (dsh-protocol--field 'message alist))
+                                    (details (dsh-protocol--field 'details alist)))))
+  code message details)
 
 ;; ---------------------------------------------------------------------------
 ;; session/list / workspace/follow baseline
@@ -2699,9 +2700,16 @@ prefer their result error, then a provider message or error at the root."
                       (or (dsh-protocol--field 'message response)
                           (dsh-protocol--field 'error response))))))))
 
-(defun dsh-protocol-error-message--from-alist (value)
-  "Return the message in an error object VALUE, if present."
-  (dsh-protocol--field 'message value))
+(defun dsh-protocol-agent-preset-error--from-alist (value)
+  "Return (PRESET . AVAILABLE) from an `agent-preset/*' error VALUE.
+PRESET is the rejected preset id; AVAILABLE lists the ids the server
+does provide, or nil when the error names none."
+  (let* ((details (dsh-protocol-rpc-error-details
+                   (dsh-protocol-rpc-error--from-alist value)))
+         (preset (dsh-protocol--field 'agentPreset details)))
+    (when preset
+      (cons preset
+            (dsh-protocol--list (dsh-protocol--field 'available details))))))
 
 (defun dsh-protocol-workspace-order--from-alist (value)
   "Return the authoritative workspace order in RPC VALUE as a list."

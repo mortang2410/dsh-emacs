@@ -1320,5 +1320,24 @@ received, RESULT is FN's return value."
                        (equal saved after-first))))))
     (setq dsh-emacs-server-auth-token nil)))
 
+;; --- RPC error text: the server message wins, the code stays visible, and a
+;; missing response is named instead of printing nil ---
+(ert-deftest dsh-emacs-test-server-rpc-error-text ()
+  :tags '(dsh-unit)
+  (should (equal "Unknown agent preset: gone (agent-preset/not-found)"
+                 (dsh-emacs-rpc-error-text
+                  '((code . "agent-preset/not-found")
+                    (message . "Unknown agent preset: gone")
+                    (details . ((agentPreset . "gone")))))))
+  (should (equal "provider said no"
+                 (dsh-emacs-rpc-error-text
+                  '((message . "provider said no")))))
+  (should (equal "legacy failure"
+                 (dsh-emacs-rpc-error-text "legacy failure")))
+  (should (equal "session/gone"
+                 (dsh-emacs-rpc-error-text '((code . "session/gone")))))
+  (should (equal "no response" (dsh-emacs-rpc-error-text nil)))
+  (should (equal "42" (dsh-emacs-rpc-error-text 42))))
+
 (provide 'dsh-test-server)
 ;;; dsh-test-server.el ends here

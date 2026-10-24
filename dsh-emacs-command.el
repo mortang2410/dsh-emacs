@@ -286,7 +286,8 @@ Returns the item list, or nil on failure (a message is emitted)."
             (progn
               (dsh-emacs-command--cache-catalog session-id items)
               items)
-          (message "Failed to list commands: %S" (cdr res))
+          (message "Failed to list commands: %s"
+                   (dsh-emacs-rpc-error-text (cdr res)))
           nil))))
 
 (defun dsh-emacs-command-catalog-prefetch (session-id)

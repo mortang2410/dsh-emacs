@@ -1542,5 +1542,45 @@
                dsh-emacs--chat-buffers)
       (when (buffer-live-p buf) (kill-buffer buf)))))
 
+;; A fork rejected because the source session's preset vanished explains the
+;; preset and lists the ids the server still provides, instead of dumping the
+;; raw error alist into the echo area.
+(ert-deftest dsh-emacs-test-lifecycle-fork-missing-preset-lists-available ()
+  :tags '(dsh-unit)
+  (let ((messages nil)
+        (value '((code . "agent-preset/not-found")
+                 (message . "Unknown agent preset: focused-investigation")
+                 (details . ((agentPreset . "focused-investigation")
+                             (available . ["standard" "ptc" "tiny"]))))))
+    (cl-letf (((symbol-function 'dsh-emacs--rpc-async)
+               (lambda (method _params cb)
+                 (when (string= method "session/fork")
+                   (funcall cb nil value))))
+              ((symbol-function 'message)
+               (lambda (format-string &rest args)
+                 (push (apply #'format format-string args) messages))))
+      (dsh-emacs-fork-session "parent-1")
+      (ert-info ((format "%s" "fork-missing-preset-lists-available"))
+        (should (equal messages
+                       (list (concat
+                              "Failed to fork session: "
+                              "Unknown agent preset: focused-investigation "
+                              "(agent-preset/not-found); available presets: "
+                              "standard, ptc, tiny"))))))))
+
+;; A fork failure without an available-preset list keeps the generic readable
+;; text; only `agent-preset/not-found' names ids to append.
+(ert-deftest dsh-emacs-test-lifecycle-fork-failure-without-available-presets ()
+  :tags '(dsh-unit)
+  (should (equal "boom (gateway/internal)"
+                 (dsh-emacs--fork-failure-text
+                  '((code . "gateway/internal") (message . "boom")))))
+  (should (equal "Unknown agent preset: gone (agent-preset/invalid)"
+                 (dsh-emacs--fork-failure-text
+                  '((code . "agent-preset/invalid")
+                    (message . "Unknown agent preset: gone")
+                    (details . ((agentPreset . "gone")
+                                (reason . "bad declaration"))))))))
+
 (provide 'dsh-test-lifecycle)
 ;;; dsh-test-lifecycle.el ends here

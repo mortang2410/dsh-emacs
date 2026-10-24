@@ -948,6 +948,28 @@
   (should (equal (dsh-protocol-rpc-result--from-alist
                   '((message . "not an upload error")) :direct-p t) '(nil))))
 
+(ert-deftest dsh-emacs-test-protocol-rpc-error-accessors ()
+  :tags '(dsh-unit)
+  (let* ((value '((code . "agent-preset/not-found")
+                  (message . "Unknown agent preset: focused-investigation")
+                  (details . ((agentPreset . "focused-investigation")
+                              (available . ["standard" "tiny"])))))
+         (error (dsh-protocol-rpc-error--from-alist value)))
+    (should (equal "agent-preset/not-found"
+                   (dsh-protocol-rpc-error-code error)))
+    (should (equal "Unknown agent preset: focused-investigation"
+                   (dsh-protocol-rpc-error-message error)))
+    (should (equal '((agentPreset . "focused-investigation")
+                     (available . ["standard" "tiny"]))
+                   (dsh-protocol-rpc-error-details error)))
+    (should (equal '("focused-investigation" "standard" "tiny")
+                   (dsh-protocol-agent-preset-error--from-alist value))))
+  (should-not (dsh-protocol-rpc-error-code
+               (dsh-protocol-rpc-error--from-alist "boom")))
+  (should-not (dsh-protocol-agent-preset-error--from-alist nil))
+  (should-not (dsh-protocol-agent-preset-error--from-alist
+               '((code . "gateway/internal") (message . "boom")))))
+
 (ert-deftest dsh-emacs-test-protocol-plan-json-boundary ()
   :tags '(dsh-unit)
   (let ((json-object-type 'hash-table)

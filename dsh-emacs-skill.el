@@ -195,7 +195,8 @@ requests, and may itself be superseded while the RPC processes events."
                   (let ((items (dsh-emacs-skill--parse (cdr res))))
                     (dsh-emacs-skill--cache-catalog session-id items)
                     items)
-                (message "Failed to list skills: %S" (cdr res))
+                (message "Failed to list skills: %s"
+                         (dsh-emacs-rpc-error-text (cdr res)))
                 nil)))
         ;; Never clear a newer request's guard after a refresh during the wait.
         (when (equal stamp

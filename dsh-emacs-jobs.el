@@ -463,7 +463,8 @@ the owning agent its completion notice; the roster converges through the
                         job-id
                         (or (dsh-protocol-job-kill--from-alist value)
                             "requested"))
-             (message "Could not stop %s: %S" job-id value))))))))
+             (message "Could not stop %s: %s" job-id
+                      (dsh-emacs-rpc-error-text value)))))))))
 
 (defun dsh-emacs-jobs--request-kill (job)
   "Two-press stop for JOB: arm on the first press, kill on the second.

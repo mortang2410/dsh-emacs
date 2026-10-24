@@ -734,6 +734,23 @@ methods).  Returns (ok-p . value) or nil."
                 (dsh-emacs--http-error-hint err))
        (cons nil nil)))))
 
+(defun dsh-emacs-rpc-error-text (value)
+  "Readable text for a failed RPC's VALUE.
+VALUE is the error object the server returned (an alist with `code',
+`message' and `details'), a plain string, or nil when no response
+arrived.  The server's message wins, with its code in parentheses; nil
+reads no response; a code-only response reads the code; anything else
+falls back to `%S'."
+  (let* ((error (dsh-protocol-rpc-error--from-alist value))
+         (text (dsh-protocol-rpc-error-message error))
+         (code (dsh-protocol-rpc-error-code error)))
+    (cond ((and text code) (format "%s (%s)" text code))
+          (text text)
+          ((stringp value) value)
+          ((null value) "no response")
+          (code (format "%s" code))
+          (t (format "%S" value)))))
+
 (defun dsh-emacs--http-error-hint (err)
   "Human-readable hint for an HTTP error ERR, or \"\".
 ERR like `(error http 404)' comes from `url-retrieve' status.  404/405

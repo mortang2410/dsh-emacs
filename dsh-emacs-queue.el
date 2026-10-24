@@ -446,7 +446,8 @@ the instant the RPC succeeds, without waiting for the frame round-trip."
            (if ok
                (when on-success (funcall on-success value))
              (when on-error (funcall on-error value))
-             (message "Queue update failed: %S" value))))))))
+             (message "Queue update failed: %s"
+                      (dsh-emacs-rpc-error-text value)))))))))
 
 (defun dsh-emacs-queue--delete (item)
   "Delete ITEM via `session/updateQueue' (kind remove)."
@@ -554,7 +555,8 @@ anything: the text-only resubmit cannot preserve their attachments."
                (progn
                  (setq dsh-emacs--queue-deleted
                        (delete id dsh-emacs--queue-deleted))
-                 (message "Queue update failed: %S" value)))))))))))
+                 (message "Queue update failed: %s"
+                          (dsh-emacs-rpc-error-text value))))))))))))
 
 (defun dsh-emacs-queue--label (item)
   "Return the queue-menu label for ITEM, e.g. \"[Q] fix the bug\"."

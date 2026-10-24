@@ -165,7 +165,8 @@ STATUS-ONLY means only the running flag changed, not Agent availability."
            (when (eq token dsh-emacs--subagent-summary-request)
              (setq dsh-emacs--subagent-summary-request nil)
              (if (not ok)
-                 (message "Subagent parent availability refresh failed: %S" value)
+                 (message "Subagent parent availability refresh failed: %s"
+                          (dsh-emacs-rpc-error-text value))
                (dolist (incoming (dsh-protocol-session-list--from-alist value))
                  (let* ((id (dsh-protocol-session-session-id incoming))
                         (existing (dsh-emacs--chat-session-item id))
@@ -437,7 +438,8 @@ Use the current completion frontend with no additional minibuffer keys."
         (unless (= generation dsh-emacs--subagent-generation)
           (user-error "Connection changed while reading subagents; try again"))
         (unless (and (car response) (cdr response))
-          (user-error "Cannot read subagents: %S" (cdr response)))
+          (user-error "Cannot read subagents: %s"
+                      (dsh-emacs-rpc-error-text (cdr response))))
         (dsh-emacs-subagent-apply
          parent (dsh-protocol-subagent-baseline--from-alist (cdr response)))))
     (let* ((entries (dsh-emacs-subagent--value parent 'subagentCatalog))
@@ -496,7 +498,8 @@ Use the current completion frontend with no additional minibuffer keys."
        "subagents/interruptByParent" (dsh-protocol-subagent-stop-request address)
        (lambda (ok value)
          (if ok (message "Subagent stop requested")
-           (message "Subagent stop failed: %S" value)))))))
+           (message "Subagent stop failed: %s"
+                    (dsh-emacs-rpc-error-text value))))))))
 
 (defun dsh-emacs-subagent-describe ()
   "Choose a child and describe its cumulative token components."

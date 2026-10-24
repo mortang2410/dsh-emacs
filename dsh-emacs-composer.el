@@ -803,7 +803,8 @@ tombstone identity).  Failures surface via `message' and leave the row unchanged
                (setq dsh-emacs--composer-goal-pending nil)
                (dsh-emacs-composer-render))
              (if (null ok)
-                 (message "Failed to %s goal: %S" verb value)
+                 (message "Failed to %s goal: %s" verb
+                          (dsh-emacs-rpc-error-text value))
                ;; The projection stream is authoritative and can outrun the
                ;; HTTP response.  Apply the optimistic response only while
                ;; this exact request still owns the pending slot and its CAS
