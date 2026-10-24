@@ -186,13 +186,19 @@ implemented in the client; the two surfaces that had to move:
    `inbox` projection has existed unchanged since before 0.1.5 and is present in
    the 0.1.5 baseline too, so this source switch is forward-compatible rather
    than a version fork.
-2. **`agentPresets/list` display names.** `dsh-emacs--preset-display-name` used
-   to key the web-consistent labels (`Standard mode` …) on
-   `(equal "system" trust)`, and the row no longer carries `trust`. The mapping
-   now keys on the preset id alone — which is what the web's own
-   `presetDisplayText` does — and `dsh-emacs-protocol.el` dropped the roster's
-   removed `authorable` field (plus its already-stale `hasDocument` sibling,
-   which no server version ever sent).
+2. **`agentPresets/list` display names.** A roster row carries `name` only when
+   the preset declaration publishes one; the shipped presets publish none.
+   `dsh-emacs--preset-display-name` used to key client-side English labels
+   (`Standard mode` …) on the preset id, first via `(equal "system" trust)` and
+   then on the id alone. That map is removed: the new-session picker shows the
+   published `name`, falling back to the id (appending the id when two rows
+   would render identically), and ensures the server then fetches the roster
+   synchronously when it is not cached yet (a failed fetch reports an error
+   instead of creating with an unchosen preset). `dsh-emacs-protocol.el` likewise
+   dropped the roster's removed `authorable` field (plus its already-stale
+   `hasDocument` sibling, which no server version ever sent). The web itself
+   still localizes built-ins through its own dictionary
+   (`presetDisplayText`), keyed on the id because there is no `trust`.
 
 Everything else in the table is additive or unread by the client: the widened
 `session/list` row, the `turnWindow`/`application` options, the workspace pin

@@ -193,10 +193,10 @@ Set to nil to keep the old behavior (sessions always start in CWD)."
 
 nil lets the host pick its own default preset (no `agentPreset' field is
 sent to `session/create').  Known values are the built-in preset ids
-\"standard\" (Standard mode), \"minimal\" (Minimal mode), \"ptc\" (PTC
-mode) and \"cordis\" (Creator mode), or the id of a user preset listed
-by `agentPresets/list'.  Interactively, `dsh-emacs-new-session' with a
-prefix argument asks for the preset instead of using this value."
+\"standard\", \"minimal\", \"ptc\" and \"cordis\", or the id of a user
+preset listed by `agentPresets/list'.  Interactively,
+`dsh-emacs-new-session' with a prefix argument asks for the preset
+instead of using this value."
   :type '(choice (const :tag "Host default" nil) string)
   :group 'dsh-emacs)
 
@@ -321,8 +321,9 @@ renaming by session ID.")
 (defvar dsh-emacs--agent-presets nil
   "Cached `agentPresets/list' response (a `dsh-protocol-agent-preset-list'
 struct), used by the new-session preset picker.  Refreshed lazily by
-`dsh-emacs--agent-presets-refresh'; nil before the first successful
-fetch falls back to the built-in preset ids.")
+`dsh-emacs--agent-presets-refresh'; `dsh-emacs--read-preset' fetches it
+synchronously when nil, so the picker has no choices until such a fetch
+succeeds.")
 
 (defvar dsh-emacs--archived-sessions nil
   "Set of archived session IDs (hash table).")
@@ -986,54 +987,32 @@ leaves the previous cache (when any) untouched.  Returns nothing."
                                   (dsh-protocol-agent-preset-list--from-alist
                                    value))))))
 
-(defconst dsh-emacs--preset-display-name-mapping
-  '(("standard" . "Standard mode")
-    ("minimal" . "Minimal mode")
-    ("ptc" . "PTC mode")
-    ("cordis" . "Creator mode"))
-  "Mapping (PRESET-ID . DISPLAY-NAME) of each shipped system preset.
-
-The dsh web resolves these presets' option labels through exactly this
-built-in key map (`presetDisplayText' in the web's agent-preset UI) —
-`agentPresets/list' carries no `name' for them.  The picker mirrors the
-mapping so the Emacs choices read the same as the web's.")
-
-(defun dsh-emacs--preset-display-name (preset)
-  "Web-consistent display name of roster row PRESET.
-Mirrors the web's `presetDisplayText': a shipped built-in id shows its web
-name (\"Standard mode\" …); anything else shows its published `name',
-falling back to the id.  PRESET is a `dsh-protocol-agent-preset' struct or
-wire alist.  dsh 0.1.7 dropped the roster row's `trust' field, so the map
-keys on the id alone — which is exactly what the web does."
-  (let* ((p (dsh-protocol--struct #'dsh-protocol-agent-preset-p
-                                  #'dsh-protocol-agent-preset--from-alist
-                                  preset))
-         (id (dsh-protocol-agent-preset-id p)))
-    (or (cdr (assoc id dsh-emacs--preset-display-name-mapping))
-        (dsh-protocol-agent-preset-name p)
-        id)))
-
 (defun dsh-emacs--preset-choices ()
   "((DISPLAY . ID) ...) preset choices for the new-session picker.
-From the cached `agentPresets/list' roster (broken entries excluded),
-each DISPLAY matches what the dsh web shows for that preset — the web
-name for the shipped system presets (\"Standard mode\" …), the
-published `name' (or the id) for everything else.  Before the first
-roster arrives, the four built-in presets are offered with their web
-names."
-  (let ((presets (and dsh-emacs--agent-presets
-                      (dsh-protocol-agent-preset-list-presets
-                       dsh-emacs--agent-presets))))
-    (if presets
-        (delq nil
-              (mapcar
-               (lambda (p)
-                 (unless (dsh-protocol-agent-preset-broken p)
-                   (cons (dsh-emacs--preset-display-name p)
-                         (dsh-protocol-agent-preset-id p))))
-               presets))
-      (mapcar (lambda (pair) (cons (cdr pair) (car pair)))
-              dsh-emacs--preset-display-name-mapping))))
+From the cached `agentPresets/list' roster (broken entries excluded).
+DISPLAY is the preset's published `name', or its id when the declaration
+carries none — shipped presets publish no name.  When two preset rows
+render identically, each adds its id in parentheses so that picking one
+still selects a single preset.  Nil before the first roster arrives."
+  (let* ((presets (and dsh-emacs--agent-presets
+                       (dsh-protocol-agent-preset-list-presets
+                        dsh-emacs--agent-presets)))
+         (rows (delq nil
+                     (mapcar
+                      (lambda (p)
+                        (unless (dsh-protocol-agent-preset-broken p)
+                          (cons (or (dsh-protocol-agent-preset-name p)
+                                    (dsh-protocol-agent-preset-id p))
+                                (dsh-protocol-agent-preset-id p))))
+                      presets)))
+         (seen (make-hash-table :test #'equal)))
+    (dolist (row rows)
+      (puthash (car row) (1+ (gethash (car row) seen 0)) seen))
+    (mapcar (lambda (row)
+              (if (> (gethash (car row) seen) 1)
+                  (cons (format "%s (%s)" (car row) (cdr row)) (cdr row))
+                row))
+            rows)))
 
 (defun dsh-emacs--preset-default-id (&optional default)
   "Preset id the new-session picker pre-selects, or nil.
@@ -1052,28 +1031,42 @@ valid choice; otherwise the roster's `isDefault' preset; otherwise nil
 
 (defun dsh-emacs--read-preset (&optional default)
   "Read an agent preset id for a new session; nil keeps the host default.
-Choices come from the cached `agentPresets/list' roster (the built-in
-presets with their web names before the first fetch); a background
-refresh is kicked off so the next pick sees fresh entries.  Pre-selects
-DEFAULT (the configured `dsh-emacs-default-preset') when it is a valid
-choice, else the host's `isDefault' preset — an empty RET accepts the
-pre-selection; without any pre-selection picking is required (unknown
-input is rejected).  C-g cancels the whole session creation."
-  (dsh-emacs--agent-presets-refresh)
-  (let* ((default-id (dsh-emacs--preset-default-id default))
-         (choices (dsh-emacs--preset-choices))
-         (default-name (and default-id
-                            (car (rassoc default-id choices))))
-         (picked (completing-read
-                  (format "Agent preset for the new session%s: "
-                          (if default-name
-                              (format " (default %s)" default-name)
-                            ""))
-                  choices nil t nil nil default-name)))
-    (cond ((and picked (not (string-empty-p picked)))
-           (or (cdr (assoc picked choices)) default-id))
-          (default-name default-id)
-          (t nil))))
+Choices come from the cached `agentPresets/list' roster; a cached roster is
+refreshed in the background, while a missing one is fetched synchronously
+after ensuring the server is ready, so the picker never opens without
+choices.  A failed fetch signals `user-error' instead of creating with an
+unchosen preset.  Pre-selects DEFAULT (the configured
+`dsh-emacs-default-preset') when it is a valid choice, else the host's
+`isDefault' preset — an empty RET accepts the pre-selection; without any
+pre-selection picking is required (unknown input is rejected).  C-g
+cancels the whole session creation."
+  (if dsh-emacs--agent-presets
+      (dsh-emacs--agent-presets-refresh)
+    (dsh-emacs-server-ensure)
+    (let ((res (dsh-emacs--rpc-request "agentPresets/list" nil)))
+      (unless (car res)
+        (user-error "Could not load the agent preset list: %s"
+                    (or (dsh-protocol-error-message--from-alist (cdr res))
+                        (cdr res)
+                        "no response")))
+      (setq dsh-emacs--agent-presets
+            (dsh-protocol-agent-preset-list--from-alist (cdr res)))))
+  (let ((choices (dsh-emacs--preset-choices)))
+    (unless choices
+      (user-error "No agent presets are available"))
+    (let* ((default-id (dsh-emacs--preset-default-id default))
+           (default-name (and default-id
+                              (car (rassoc default-id choices))))
+           (picked (completing-read
+                    (format "Agent preset for the new session%s: "
+                            (if default-name
+                                (format " (default %s)" default-name)
+                              ""))
+                    choices nil t nil nil default-name)))
+      (cond ((and picked (not (string-empty-p picked)))
+             (or (cdr (assoc picked choices)) default-id))
+            (default-name default-id)
+            (t nil)))))
 
 (defun dsh-emacs--ensure-input-marker ()
   "Repair the chat input marker when it was lost, without touching content.

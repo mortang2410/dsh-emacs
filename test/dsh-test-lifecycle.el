@@ -1440,7 +1440,7 @@
           (goto-char (point-min))
           (setq dsh-emacs--agent-presets
                 (dsh-protocol-agent-preset-list--from-alist
-                 '((presets . [((id . "ptc"))]))))
+                 '((presets . [((id . "ptc") (name . "PTC mode"))]))))
           (cl-letf (((symbol-function 'dsh-emacs--rpc-async)
                      (lambda (method params cb)
                        (push (list method params) calls)
@@ -1469,6 +1469,73 @@
                            (string= "ptc" (cdr (assq 'agentPreset
                                                       (cdr (assq 'request (cadr create))))))
                            (member "agentPresets/list" (mapcar #'car calls)))))))
+      (setq dsh-emacs--agent-presets old-cache)
+      (maphash (lambda (_id chat)
+                 (when (buffer-live-p chat) (kill-buffer chat)))
+               dsh-emacs--chat-buffers)
+      (when (buffer-live-p buf) (kill-buffer buf)))))
+
+;; C path with a cold roster cache: fetch the roster synchronously before
+;; prompting, instead of creating with the unchosen host default.
+(ert-deftest dsh-emacs-test-lifecycle-choose-preset-fetches-cold-roster ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs--chat-buffers (make-hash-table :test #'equal))
+         (dsh-emacs--current-session nil)
+         (dsh-emacs--current-buffer nil)
+         (dsh-emacs--sessions nil)
+         (dsh-emacs--workspaces nil)
+         (calls nil)
+         (fetched nil)
+         (prompted nil)
+         (offered nil)
+         (old-cache dsh-emacs--agent-presets)
+         (buf (generate-new-buffer " *dsh-C-cold-preset*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "  workspace row")
+          (put-text-property (point-min) (point-max)
+                             'dsh-emacs-workspace-id "w-cold")
+          (goto-char (point-min))
+          (setq dsh-emacs--agent-presets nil)
+          (cl-letf (((symbol-function 'dsh-emacs--rpc-request)
+                     (lambda (method _params)
+                       (setq fetched method)
+                       (cons t '((presets . [((id . "ptc")
+                                              (name . "PTC mode"))])))))
+                    ((symbol-function 'dsh-emacs--rpc-async)
+                     (lambda (method params cb)
+                       (push (list method params) calls)
+                       (when (string= method "session/create")
+                         (funcall cb t `((sessionId . ,(cdr (assq 'sessionId
+                                                                  (cdr (assq 'request params))))))))))
+                    ((symbol-function 'pop-to-buffer)
+                     (lambda (buffer &rest _) buffer))
+                    ((symbol-function 'dsh-emacs--activate-chat-buffer)
+                     (lambda (sid buffer &optional _address)
+                       (puthash sid buffer dsh-emacs--chat-buffers)
+                       (with-current-buffer buffer
+                         (setq-local dsh-emacs--buffer-session sid)
+                         (dsh-emacs--chat-buffer-sync sid)
+                         (dsh-emacs-mode))))
+                    ((symbol-function 'completing-read)
+                     (lambda (_prompt collection &rest _)
+                       (setq prompted t offered collection)
+                       "PTC mode"))
+                    (current-prefix-arg nil))
+            (call-interactively #'dsh-emacs-new-session-choose-preset))
+          (let ((create (cl-find-if
+                         (lambda (c) (string= "session/create" (car c)))
+                         calls)))
+            (ert-info ((format "%s" "choose-preset-fetches-cold-roster"))
+              (should prompted)
+              (should (equal "agentPresets/list" fetched))
+              (should (equal '(("PTC mode" . "ptc")) offered))
+              (should-not (member "agentPresets/list" (mapcar #'car calls)))
+              (should (and create
+                           (string= "ptc"
+                                    (cdr (assq 'agentPreset
+                                               (cdr (assq 'request
+                                                          (cadr create)))))))))))
       (setq dsh-emacs--agent-presets old-cache)
       (maphash (lambda (_id chat)
                  (when (buffer-live-p chat) (kill-buffer chat)))

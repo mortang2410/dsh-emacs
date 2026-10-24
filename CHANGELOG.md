@@ -24,6 +24,17 @@ minor) and stay undated until the release is cut.
   immediately. Activity received during a list refresh survives its snapshot,
   and older events cannot roll back newer timestamps. (rationale: postmortem/154)
 
+### Changed
+
+- **Preset picker uses server labels**: new-session preset choices show a
+  preset's published `name` and fall back to its id. The client-side English
+  names for the shipped presets (`Standard mode` …), which the server does not
+  publish, are removed, so those choices read `standard`, `minimal`, `ptc` and
+  `cordis`. Choices that would render identically append the preset id. When
+  the roster is not cached yet, the picker ensures the server is ready and
+  fetches it before prompting; a failed fetch reports an error instead of
+  creating the session with an unchosen preset. (rationale: postmortem/155)
+
 ## 0.7.0 - 2026-10-23
 
 Compatible with **dsh 0.2.1-rc.2**, the latest upstream release as of

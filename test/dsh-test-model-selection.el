@@ -1004,52 +1004,34 @@
     (ert-info ((format "%s" "command-input-wire-false-attachments-normalizes-to-nil"))
       (should (null (dsh-protocol-command-input-attachments input))))))
 
-;; --- Test 75: new-session preset candidate table (web display name +
-;; cached roster + built-in fallback) ---
-;; Display names match web: a system built-in preset is named via web's
-;; built-in key map ("Standard mode" and so on, the web name wins even if it
-;; publishes its own name); a user preset uses its published name (id when
-;; there is none); broken entries are dropped. No cache -> the web names of
-;; the four built-ins.
-(ert-deftest dsh-emacs-test-model-selection-preset-choices-fallback-builtins ()
+;; --- Test 75: new-session preset candidate table (published name or id) ---
+;; A preset uses its published `name'; one without a name shows its id. Rows
+;; that would render identically append their id. Broken entries are dropped.
+;; No cache -> no choices; `dsh-emacs--read-preset' ensures the server, fetches
+;; a cold roster synchronously, and only then prompts with those choices.
+(ert-deftest dsh-emacs-test-model-selection-preset-choices-name-or-id ()
   :tags '(dsh-unit)
   (let ((old-cache dsh-emacs--agent-presets))
     (unwind-protect
         (progn
           (setq dsh-emacs--agent-presets nil)
-          (ert-info ((format "%s" "preset-choices-fallback-builtins"))
-            (should (equal '(("Standard mode" . "standard")
-                             ("Minimal mode" . "minimal")
-                             ("PTC mode" . "ptc")
-                             ("Creator mode" . "cordis"))
-                           (dsh-emacs--preset-choices))))
+          (ert-info ((format "%s" "preset-choices-empty-before-roster"))
+            (should-not (dsh-emacs--preset-choices)))
           (setq dsh-emacs--agent-presets
                 (dsh-protocol-agent-preset-list--from-alist
-                 '((presets . [((id . "standard") (trust . "system"))
-                               ((id . "minimal") (trust . "system")
-                                (name . "Legacy name"))
+                 '((presets . [((id . "standard") (isDefault . t))
+                               ((id . "minimal") (name . "Legacy name"))
                                ((id . "ptc"))
-                               ((id . "my-agent") (trust . "user")
-                                (name . "My Agent"))
+                               ((id . "my-agent") (name . "My Agent"))
+                               ((id . "my-standard") (name . "standard"))
                                ((id . "broken-agent") (broken . "x"))]))))
-          (ert-info ((format "%s" "preset-choices-web-names-and-roster"))
-            (should (equal '(("Standard mode" . "standard")
-                             ("Minimal mode" . "minimal")
-                             ("PTC mode" . "ptc")
-                             ("My Agent" . "my-agent"))
-                           (dsh-emacs--preset-choices))))
-          ;; display-name boundaries: system unknown id -> name ?? id;
-          ;; user without name -> id
-          (ert-info ((format "%s" "preset-display-name-falls-back-name-or-id"))
-            (should (and (equal "Future Mode"
-                                (dsh-emacs--preset-display-name
-                                 (dsh-protocol-agent-preset--from-alist
-                                  '((id . "future") (trust . "system")
-                                    (name . "Future Mode")))))
-                         (equal "my-raw"
-                                (dsh-emacs--preset-display-name
-                                 (dsh-protocol-agent-preset--from-alist
-                                  '((id . "my-raw") (trust . "user")))))))))
+          (ert-info ((format "%s" "preset-choices-name-or-id"))
+            (should (equal '(("standard (standard)" . "standard")
+                             ("Legacy name" . "minimal")
+                             ("ptc" . "ptc")
+                             ("My Agent" . "my-agent")
+                             ("standard (my-standard)" . "my-standard"))
+                           (dsh-emacs--preset-choices)))))
       (setq dsh-emacs--agent-presets old-cache))))
 
 ;; --- Test 76: preset preselected id (config > roster isDefault > none) ---
@@ -1075,8 +1057,9 @@
 ;; Pick by display name -> its id; empty RET accepts the preselect (models
 ;; completing-read returning DEF); with no preselect an empty RET -> nil
 ;; (host default, no agentPreset sent); C-g bubbles up to cancel the whole
-;; creation (quit is not swallowed by read-preset). Every read triggers one
-;; agentPresets/list refresh (rpc-async is captured by the mock).
+;; creation (quit is not swallowed by read-preset). A warm read triggers one
+;; background refresh; a cold read fetches the roster synchronously and a
+;; failed fetch signals instead of prompting.
 (ert-deftest dsh-emacs-test-model-selection-read-preset-pick-by-display-name ()
   :tags '(dsh-unit)
   (let ((old-cache dsh-emacs--agent-presets)
@@ -1129,7 +1112,43 @@
             (should (eq 'quit
                         (condition-case nil
                             (progn (dsh-emacs--read-preset nil) nil)
-                          (quit 'quit))))))
+                          (quit 'quit)))))
+          ;; cold read: ensure the server, fetch the roster synchronously,
+          ;; then prompt with the fetched choices
+          (setq dsh-emacs--agent-presets nil)
+          (let ((ensured nil)
+                (prompted nil)
+                (fetched nil)
+                (offered nil))
+            (cl-letf (((symbol-function 'dsh-emacs-server-ensure)
+                       (lambda () (setq ensured t)))
+                      ((symbol-function 'completing-read)
+                       (lambda (_prompt collection &rest _)
+                         (setq prompted t offered collection)
+                         "standard"))
+                      ((symbol-function 'dsh-emacs--rpc-request)
+                       (lambda (method _params)
+                         (setq fetched method)
+                         (cons t '((presets . [((id . "standard"))])))))
+                      ((symbol-function 'dsh-emacs--rpc-async)
+                       (lambda (&rest _)
+                         (ert-fail "cold read must not wait for the async refresh"))))
+              (ert-info ((format "%s" "read-preset-fetches-roster-before-prompt"))
+                (should (equal "standard" (dsh-emacs--read-preset nil)))
+                (should ensured)
+                (should prompted)
+                (should (equal "agentPresets/list" fetched))
+                (should (equal '(("standard" . "standard")) offered)))))
+          ;; failed cold fetch: signal, never prompt or create with a default
+          (setq dsh-emacs--agent-presets nil)
+          (let ((prompted nil))
+            (cl-letf (((symbol-function 'completing-read)
+                       (lambda (&rest _) (setq prompted t) ""))
+                      ((symbol-function 'dsh-emacs--rpc-request)
+                       (lambda (&rest _) (cons nil nil))))
+              (ert-info ((format "%s" "read-preset-fails-without-roster"))
+                (should-error (dsh-emacs--read-preset nil) :type 'user-error)
+                (should-not prompted)))))
       (setq dsh-emacs--agent-presets old-cache))))
 
 ;; --- Test 95b: permissionPresets/catalog parses and the switch runs the

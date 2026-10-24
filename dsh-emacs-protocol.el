@@ -617,8 +617,9 @@ selection, GROUPS by provider and unknown FAILURES.  The wire's
                               (description (cdr (assq 'description alist)))
                               (broken (cdr (assq 'broken alist))))))
   "One `agentPresets/list' entry.
-There is no `trust' field: dsh 0.1.7 dropped it, so a client keys any
-built-in label on ID alone (`dsh-emacs--preset-display-name')."
+`name' is present only when the preset declaration publishes one; the
+shipped presets do not, so callers fall back to `id' for display.  There is
+no `trust' field (dsh 0.1.7 dropped it)."
   id
   is-default
   name
