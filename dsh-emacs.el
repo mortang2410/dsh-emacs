@@ -798,7 +798,24 @@ clearing the draft, using the last session identity confirmed by the server."
                    ((error quit) (fail (error-message-string err))))))))
          (created (ok value)
            (if (not ok)
-               (fail (dsh-emacs-rpc-error-text value))
+               (if (and preset
+                        (dsh-emacs--agent-preset-unavailable-p value))
+                   (progn
+                     ;; The server no longer has the preset this draft asked
+                     ;; for (removed or renamed, e.g. a stale
+                     ;; `dsh-emacs-default-preset').  The web applies the same
+                     ;; recovery when restoring a saved blank Session; here
+                     ;; every create carries the preset, so retry once under
+                     ;; the host default and keep the fallback for manual
+                     ;; retries.
+                     (let ((missing preset))
+                       (setq preset nil
+                             context (list dir workspace nil server id)
+                             dsh-emacs--creation-context context)
+                       (message "Preset %s unavailable; using the host default"
+                                missing))
+                     (create))
+                 (fail (dsh-emacs-rpc-error-text value)))
              (widen)
              (let* ((session (dsh-protocol-session--from-alist value))
                     (sid (dsh-protocol-session-session-id session))
@@ -1030,6 +1047,15 @@ valid choice; otherwise the roster's `isDefault' preset; otherwise nil
                      (and (dsh-protocol-agent-preset-is-default p)
                           (dsh-protocol-agent-preset-id p)))
                    presets)))))
+
+(defun dsh-emacs--agent-preset-unavailable-p (value)
+  "Non-nil when RPC error VALUE says the requested preset is unusable.
+Covers `agent-preset/not-found' (the id no longer exists) and
+`agent-preset/invalid' (the id resolves but cannot compose), the two
+codes the dsh web drops a restored blank's preset for."
+  (member (dsh-protocol-rpc-error-code
+           (dsh-protocol-rpc-error--from-alist value))
+          '("agent-preset/not-found" "agent-preset/invalid")))
 
 (defun dsh-emacs--read-preset (&optional default)
   "Read an agent preset id for a new session; nil keeps the host default.

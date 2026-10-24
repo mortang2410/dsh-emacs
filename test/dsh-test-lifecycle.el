@@ -1568,6 +1568,154 @@
                               "(agent-preset/not-found); available presets: "
                               "standard, ptc, tiny"))))))))
 
+;; A draft whose preset disappeared on the server retries once under the host
+;; default (same recovery as the dsh web's startup restoration) instead of
+;; failing with the server's raw error value.
+(ert-deftest dsh-emacs-test-lifecycle-create-falls-back-when-preset-missing ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs--chat-buffers (make-hash-table :test #'equal))
+         (dsh-emacs--current-session nil)
+         (dsh-emacs--current-buffer nil)
+         (dsh-emacs--sessions nil)
+         (dsh-emacs--workspaces nil)
+         (dsh-emacs-new-session-auto-project nil)
+         (presets nil)
+         (messages nil))
+    (unwind-protect
+        (cl-letf
+            (((symbol-function 'dsh-emacs--rpc-async)
+              (lambda (method params cb)
+                (when (string= method "session/create")
+                  (let* ((request (cdr (assq 'request params)))
+                         (preset (cdr (assq 'agentPreset request))))
+                    (push preset presets)
+                    (if preset
+                        (funcall cb nil
+                                 '((code . "agent-preset/not-found")
+                                   (message . "Unknown agent preset: gone")
+                                   (details
+                                    . ((agentPreset . "gone")
+                                       (available . ["standard" "ptc"])))))
+                      (funcall cb t
+                               `((sessionId
+                                  . ,(cdr (assq 'sessionId request)))
+                                 (agentPreset . "standard"))))))))
+             ((symbol-function 'pop-to-buffer)
+              (lambda (buffer &rest _) buffer))
+             ((symbol-function 'dsh-emacs--activate-chat-buffer)
+              (lambda (sid buffer &optional _address)
+                (puthash sid buffer dsh-emacs--chat-buffers)
+                (with-current-buffer buffer
+                  (setq-local dsh-emacs--buffer-session sid)
+                  (dsh-emacs--chat-buffer-sync sid)
+                  (dsh-emacs-mode))))
+             ((symbol-function 'message)
+              (lambda (format-string &rest args)
+                (push (apply #'format format-string args) messages))))
+          (dsh-emacs-new-session nil nil "gone")
+          (ert-info ((format "%s" "create-falls-back-when-preset-missing"))
+            (should (equal (reverse presets) (list "gone" nil)))
+            (should (cl-some (lambda (text)
+                               (string-match-p "Preset gone unavailable" text))
+                             messages))))
+      (maphash (lambda (_id chat)
+                 (when (buffer-live-p chat) (kill-buffer chat)))
+               dsh-emacs--chat-buffers))))
+
+;; An unrelated create failure keeps the draft and reports the error; only a
+;; missing/unusable preset earns the one-shot fallback.
+(ert-deftest dsh-emacs-test-lifecycle-create-does-not-retry-unrelated-failure ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs--chat-buffers (make-hash-table :test #'equal))
+         (dsh-emacs--sessions nil)
+         (dsh-emacs--workspaces nil)
+         (dsh-emacs-new-session-auto-project nil)
+         (requests nil)
+         (messages nil)
+         (buf nil))
+    (unwind-protect
+        (cl-letf
+            (((symbol-function 'dsh-emacs--rpc-async)
+              (lambda (method params cb)
+                (when (string= method "session/create")
+                  (push (cdr (assq 'agentPreset
+                                   (cdr (assq 'request params))))
+                        requests)
+                  (funcall cb nil
+                           '((code . "gateway/internal")
+                             (message . "boom"))))))
+             ((symbol-function 'pop-to-buffer)
+              (lambda (buffer &rest _) buffer))
+             ((symbol-function 'message)
+              (lambda (format-string &rest args)
+                (push (apply #'format format-string args) messages))))
+          (setq buf (dsh-emacs-new-session nil nil "gone"))
+          (ert-info ((format "%s" "create-does-not-retry-unrelated-failure"))
+            (should (equal requests '("gone")))
+            (should (cl-some (lambda (text)
+                               (string-match-p "gateway/internal" text))
+                             messages))
+            (with-current-buffer buf
+              (should (derived-mode-p 'dsh-emacs-draft-mode))
+              (should dsh-emacs--creation-context))))
+      (when (buffer-live-p buf) (kill-buffer buf)))))
+
+;; A fallback retry that fails too must stop after one attempt, keep the draft
+;; editable, and report the second (readable) error.
+(ert-deftest dsh-emacs-test-lifecycle-create-fallback-retry-failure-keeps-draft ()
+  :tags '(dsh-unit)
+  (let* ((dsh-emacs--chat-buffers (make-hash-table :test #'equal))
+         (dsh-emacs--sessions nil)
+         (dsh-emacs--workspaces nil)
+         (dsh-emacs-new-session-auto-project nil)
+         (requests nil)
+         (messages nil)
+         (first t)
+         (buf nil))
+    (unwind-protect
+        (cl-letf
+            (((symbol-function 'dsh-emacs--rpc-async)
+              (lambda (method params cb)
+                (when (string= method "session/create")
+                  (push (cdr (assq 'agentPreset
+                                   (cdr (assq 'request params))))
+                        requests)
+                  (if first
+                      (progn
+                        (setq first nil)
+                        ;; The first reply arrives while the draft is current.
+                        (insert "draft text")
+                        (funcall cb nil
+                                 '((code . "agent-preset/not-found")
+                                   (message . "Unknown agent preset: gone")
+                                   (details
+                                    . ((agentPreset . "gone")
+                                       (available . ["standard"]))))))
+                    (funcall cb nil
+                             '((code . "gateway/internal")
+                               (message . "second failure")))))))
+             ((symbol-function 'pop-to-buffer)
+              (lambda (buffer &rest _) buffer))
+             ((symbol-function 'message)
+              (lambda (format-string &rest args)
+                (push (apply #'format format-string args) messages))))
+          (setq buf (dsh-emacs-new-session nil nil "gone"))
+          (ert-info ((format "%s" "create-fallback-retry-failure-keeps-draft"))
+            (should (equal (reverse requests) (list "gone" nil)))
+            (should (cl-some (lambda (text)
+                               (string-match-p
+                                "Failed to create session: second failure (gateway/internal)"
+                                text))
+                             messages))
+            (with-current-buffer buf
+              (should (derived-mode-p 'dsh-emacs-draft-mode))
+              (should (null dsh-emacs--creation-pending))
+              (should (equal "draft text"
+                             (buffer-substring-no-properties
+                              (point-min) (point-max))))
+              (should (null (nth 2 dsh-emacs--creation-context))))))
+      (when (buffer-live-p buf) (kill-buffer buf)))))
+
 ;; A fork failure without an available-preset list keeps the generic readable
 ;; text; only `agent-preset/not-found' names ids to append.
 (ert-deftest dsh-emacs-test-lifecycle-fork-failure-without-available-presets ()

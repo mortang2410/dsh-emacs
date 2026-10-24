@@ -28,6 +28,12 @@ minor) and stay undated until the release is cut.
   error code instead of the raw error alist. A fork refused because the source
   session's preset no longer exists also lists the presets the server provides.
 
+- **Drafts survive a missing preset**: when `session/create` reports
+  `agent-preset/not-found` or `agent-preset/invalid`, the draft keeps its text
+  and retries once without the preset, continuing under the host default,
+  including when `dsh-emacs-default-preset` names a preset the server no
+  longer has. (rationale: postmortem/156)
+
 ### Changed
 
 - **Preset picker uses server labels**: new-session preset choices show a

@@ -873,7 +873,10 @@ value    { sessionId, agentPreset? }
   (with the published sessionId); unknown workspace → `workspace/not-found`.
 - An unknown/assembly-failing `agentPreset` is rejected by the preset assembly
   layer (`agent-preset/not-found` / `agent-preset/invalid`, see §4.6); a subagent
-  identity → `session/agent-busy`.
+  identity → `session/agent-busy`. Emacs retries such a create once without
+  `agentPreset` (including a stale `dsh-emacs-default-preset`), so it continues
+  under the host default; the web applies the same recovery when restoring a
+  saved blank Session.
 
 #### session.selectModel
 ```
