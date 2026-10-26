@@ -333,7 +333,8 @@ the session with completion.
 `Recents` leads the list with the 15 most recently updated visible sessions,
 newest first. `dsh-emacs-session-recents-limit` changes the count; zero hides
 the group. The same sessions remain in their workspace or `Ungrouped` group.
-Recents respects the `w` workspace filter and excludes archived sessions,
+The `w` workspace filter hides Recents entirely; clearing the filter restores
+it. Recents excludes archived sessions,
 sessions of subagent origin and blank sessions other than the current one. Its rows
 retain their actual workspace context for commands such as `c`, `R` and `M`.
 Subagent expansion is shared between both occurrences of a session.

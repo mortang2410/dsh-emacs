@@ -146,10 +146,15 @@ window's own point behind, which the session list now preserves per window."
            (dsh-emacs-session--filter-ws-id "ws")
            (groups (dsh-emacs-session--group-sessions sessions workspaces)))
       (should (equal (mapcar (lambda (g) (plist-get g :label)) groups)
-                     '("Recents" "Project")))
+                     '("Project")))
       (should (equal (mapcar #'dsh-protocol-session-session-id
                              (plist-get (car groups) :sessions))
-                     '("22" "20"))))
+                     '("22" "20")))
+      (let ((dsh-emacs-session--filter-ws-id nil))
+        (should (eq (plist-get
+                     (car (dsh-emacs-session--group-sessions sessions workspaces))
+                     :group-id)
+                    :recents))))
     (let ((dsh-emacs-session-recents-limit 0))
       (should (equal (mapcar (lambda (g) (plist-get g :label))
                              (dsh-emacs-session--group-sessions
@@ -430,7 +435,7 @@ window's own point behind, which the session list now preserves per window."
                                  (cons 'sessionIds ["s1" "s2"]))))
          (sessions-s (dsh-emacs-test--session-items sessions))
          (workspaces-s (mapcar #'dsh-protocol-workspace--from-alist workspaces)))
-    ;; Filter to w1: only WS A members remain, Ungrouped bucket suppressed
+    ;; Filter to w1: both Recents and Ungrouped are suppressed.
     ;; Note: the `filtered' initializer must be evaluated after the filter
     ;; binding exists, hence let* here (let evaluates initializers before
     ;; binding, reading the old value)
@@ -438,10 +443,9 @@ window's own point behind, which the session list now preserves per window."
            (dsh-emacs-session--filter-ws-id "w1")
            (filtered (dsh-emacs-session--group-sessions sessions-s workspaces-s)))
       (ert-info ((format "%s" "session-filter-restricts-workspace"))
-        (should (and (= 2 (length filtered))
-                     (equal "Recents" (plist-get (car filtered) :label))
-                     (equal "WS A" (plist-get (cadr filtered) :label))
-                     (= 2 (length (plist-get (car filtered) :sessions)))))))
+        (should (= 1 (length filtered)))
+        (should (equal "WS A" (plist-get (car filtered) :label)))
+        (should (= 2 (length (plist-get (car filtered) :sessions))))))
     ;; No filter: both WS A and Ungrouped buckets present
     (let* ((dsh-emacs--archived-sessions nil)
            (dsh-emacs-session--filter-ws-id nil)
@@ -450,8 +454,7 @@ window's own point behind, which the session list now preserves per window."
         (should (and (= 3 (length grouped))
                      (cl-some (lambda (g) (equal "WS A" (plist-get g :label))) grouped)
                      (cl-some (lambda (g) (equal "Ungrouped" (plist-get g :label))) grouped)))))
-    ;; Render level: while filtering, other workspaces / ungrouped
-    ;; sessions are not visible
+    ;; Render level: Recents and sessions outside the workspace disappear.
     (let ((buf (generate-new-buffer " *dsh-filter-render*")))
       (unwind-protect
           (with-current-buffer buf
@@ -465,11 +468,13 @@ window's own point behind, which the session list now preserves per window."
                           (point-min) (point-max))))
                 ;; Rows sorted by recency (Beta before Alpha); match the whole span
                 ;; to avoid order dependence
-                (ert-info ((format "%s" "session-filter-render-hides-other-sessions"))
+                (ert-info ((format "%s" "session-filter-render-hides-recents"))
                   (should (and (string-match-p "Filter: WS A" txt)
                                (string-match-p "Alpha" txt)
                                (string-match-p "Beta" txt)
-                               (not (string-match-p "Gamma" txt))))))))
+                               (not (string-match-p "Gamma" txt))
+                               (not (dsh-emacs-session--row-pos
+                                     'dsh-emacs-row-id :recents))))))))
         (kill-buffer buf)))))
 
 ;; --- Test 51b: session list workspace collapse survives redraw ---

@@ -177,8 +177,8 @@ active workspace filter)."
 (defcustom dsh-emacs-session-recents-limit 15
   "Maximum sessions in the first Recents group; zero hides the group.
 Sessions are ordered by their latest update, newest first, and remain
-listed in their workspace as well.  Recents respects the workspace filter
-and the same visibility rules as the rest of the session list."
+listed in their workspace as well.  Recents is hidden while a workspace
+filter is active and otherwise follows the list's usual visibility rules."
   :type 'natnum
   :group 'dsh-emacs)
 
@@ -645,8 +645,8 @@ Returns a list of plists: (:label LABEL :workspace-id WS-ID :sessions MEMBERS),
 in workspace order (WS-ID is nil for synthetic groups).  Recents also carries
 :group-id `:recents' and :workspaces, a session-id to workspace map.
 When `dsh-emacs-session--filter-ws-id' is set, only that workspace's
-members are returned (the ungrouped bucket is suppressed); archived
-sessions are always excluded."
+group is returned; Recents and the ungrouped bucket are suppressed.
+Archived sessions are always excluded."
   ;; Map session ids to their owning workspaces for grouping and row commands.
   (let ((ws-by-session (make-hash-table :test 'equal))
         (filter dsh-emacs-session--filter-ws-id)
@@ -667,8 +667,7 @@ sessions are always excluded."
         ;; (never-messaged) rows — blank rows match dsh web's browser tree:
         ;; only the currently-open session stays visible among them.
         (when (dsh-emacs-session--visible-p session current)
-          (when (or (null filter) (equal ws-id filter))
-            (push session recents))
+          (push session recents)
           (if (and ws-id (or (null filter) (equal ws-id filter)))
               (let ((entry (assoc ws-id groups)))
                 (if entry
@@ -697,7 +696,7 @@ sessions are always excluded."
                     :sessions (dsh-emacs-session--sort-by-recency ungrouped))
               result))
       (setq result (nreverse result))
-      (when (and recents (> dsh-emacs-session-recents-limit 0))
+      (when (and (null filter) recents (> dsh-emacs-session-recents-limit 0))
         (push (list :label "Recents" :group-id :recents
                     :workspaces ws-by-session
                     :sessions (cl-subseq

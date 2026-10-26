@@ -10,6 +10,9 @@ minor) and stay undated until the release is cut.
 
 ### Added
 
+- **Hide Recents while filtering workspaces**: `w` shows only the selected
+  workspace; clearing the filter restores Recents. (rationale: [postmortem/158](postmortem/158-filter-hides-recents.md))
+
 - **Choose the session-list jump target**: `dsh-emacs-session-jump-target`
   makes chat-to-list navigation (`C-c C-l` or `M-x dsh-emacs`) prefer `recents`
   by default, falling back to the canonical workspace or `Ungrouped` session

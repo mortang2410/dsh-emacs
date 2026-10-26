@@ -1,5 +1,7 @@
 # 154 — Recent sessions before workspace groups
 
+Superseded by [158](158-filter-hides-recents.md) for workspace-filter behavior.
+
 ## Background
 
 At `f4f2e40`, the session list sorts each workspace by latest update, but
