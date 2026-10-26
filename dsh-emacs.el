@@ -4372,7 +4372,8 @@ Matching waits for the workspace cache when necessary; no workspace is
 created.  Without a match, retain the active-session navigation below.
 
 The cursor lands on the invoking chat's session row (the last opened
-session outside a chat), not on whatever row the buffer was showing:
+session outside a chat), not on whatever row the buffer was showing.
+`dsh-emacs-session-jump-target' chooses its Recents or workspace occurrence:
 opening the list is an explicit
 \"where am I\" request, whereas a plain refresh (`g', events,
 auto-refresh) keeps the row you are on.  The list is populated

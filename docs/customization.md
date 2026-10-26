@@ -122,6 +122,7 @@ The most commonly used options, straight in your config:
 (setq dsh-emacs-attach-max-file-size (* 32 1024 1024)) ; largest staged file, in bytes; checked again at upload (nil = no limit; inline images are not governed by it)
 (setq dsh-emacs-render-image-thumbnail-lines 4)     ; height of one transcript image thumbnail, in text lines (dsh web uses 64px tiles); a lone image uses the same gallery style
 (setq dsh-emacs-session-auto-refresh-interval nil) ; seconds between automatic session-list refreshes (nil = off)
+(setq dsh-emacs-session-jump-target 'recents)      ; recents (default) or workspace: chat-to-list jump destination
 (setq dsh-emacs-session-recents-limit 15)          ; latest updated sessions in the leading Recents group (0 = hide)
 (setq dsh-emacs-workspaces-collapsed-by-default nil) ; workspace and Ungrouped groups start expanded (t = collapsed); TAB/RET overrides a group in the current list buffer
 (setq dsh-emacs-composer-goal-actions t)             ; show pause/resume/edit/clear buttons on the Goal Row (nil = hide them; C-c C-g keys still work; C-c C-g a / dsh-emacs-goal-actions-toggle toggles the current buffer)
@@ -375,12 +376,20 @@ which controls new-session creation only.
 
 Opening the list from a chat (`M-x dsh-emacs`, `C-c C-l`) puts the cursor on
 that chat's session row, even after switching back from a more recently
-opened chat, and scrolls it into view. It prefers the Recents occurrence when
-present, otherwise the workspace occurrence; for a subagent, its ancestors
-and the containing group are expanded. When a session sits in a folded group, the group
+opened chat, and scrolls it into view. `dsh-emacs-session-jump-target` chooses
+the occurrence: `recents` (default) preserves the preference for Recents when
+present, falling back to the canonical workspace or `Ungrouped` session row
+when absent (including when Recents is disabled); `workspace` always selects
+that canonical session row, not the workspace header. For example, set
+`(setq dsh-emacs-session-jump-target 'workspace)` to return to project context
+even when the session also appears in Recents. This option does not change
+explicit project-root workspace navigation described above. For a subagent,
+its ancestors and the containing group are expanded.
+When a session sits in a folded group, the group
 is unfolded to show it, and a `w` workspace filter that
 would hide the row is cleared. Refreshing the list in place (`g`, events,
-auto-refresh) instead keeps the row you are on. If archiving or deleting removes
+auto-refresh) instead preserves point on the row you are on, without applying
+the jump-target preference. If archiving or deleting removes
 that row, focus moves to the next surviving row in the previous list order,
 or the preceding row when none follows. Opening a list that is
 already live reuses the cached rows — the server's event stream keeps them

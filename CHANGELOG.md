@@ -10,6 +10,13 @@ minor) and stay undated until the release is cut.
 
 ### Added
 
+- **Choose the session-list jump target**: `dsh-emacs-session-jump-target`
+  makes chat-to-list navigation (`C-c C-l` or `M-x dsh-emacs`) prefer `recents`
+  by default, falling back to the canonical workspace or `Ungrouped` session
+  row when absent, or always select that canonical row with `workspace`.
+  Explicit project-root workspace navigation and point-preserving refreshes
+  are unchanged. (rationale: [postmortem/157](postmortem/157-session-jump-target.md))
+
 - **Recents at the top of the session list**: an initially expanded group
   shows the 15 most recently updated visible sessions across workspaces,
   while retaining their original workspace rows. Set

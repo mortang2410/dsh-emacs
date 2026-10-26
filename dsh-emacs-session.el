@@ -182,6 +182,15 @@ and the same visibility rules as the rest of the session list."
   :type 'natnum
   :group 'dsh-emacs)
 
+(defcustom dsh-emacs-session-jump-target 'recents
+  "Preferred occurrence of the active session when opening the list.
+With `recents', jump to Recents when present, otherwise its workspace.
+With `workspace', always jump to its workspace (or Ungrouped) row.
+Explicit project navigation and plain refreshes are unaffected."
+  :type '(choice (const :tag "Recents, then workspace" recents)
+                 (const :tag "Workspace" workspace))
+  :group 'dsh-emacs)
+
 (defcustom dsh-emacs-workspaces-collapsed-by-default nil
   "Whether workspace groups start collapsed in the session list.
 This applies to real workspaces and the Ungrouped bucket; Recents starts
@@ -477,6 +486,7 @@ baselines regroup hundreds of multibyte rows."
          (jump-id (unless jump-workspace
                     dsh-emacs-session--auto-jump-session))
          (jump-p (or jump-workspace jump-id))
+         (jump-row-id nil)
          (ancestors (and jump-id
                          (dsh-emacs-session--ancestors jump-id))))
     (dolist (parent ancestors)
@@ -503,13 +513,19 @@ baselines regroup hundreds of multibyte rows."
         ;; stays pending for the repaint that brings the session in.
         (let ((owner (cl-find-if
                       (lambda (group)
-                        (cl-find-if (lambda (session)
-                                      (equal (or (car (last ancestors)) jump-id)
-                                             (dsh-protocol-session-session-id
-                                              session)))
-                                    (plist-get group :sessions)))
+                        (and (or (eq dsh-emacs-session-jump-target 'recents)
+                                 (not (eq (plist-get group :group-id) :recents)))
+                             (cl-find-if
+                              (lambda (session)
+                                (equal (or (car (last ancestors)) jump-id)
+                                       (dsh-protocol-session-session-id session)))
+                              (plist-get group :sessions))))
                       groups)))
           (when owner
+            (setq jump-row-id
+                  (if (eq (plist-get owner :group-id) :recents)
+                      (list :recents jump-id)
+                    jump-id))
             (let ((group-id (or (plist-get owner :group-id)
                                 (plist-get owner :workspace-id) :ungrouped)))
               (when (dsh-emacs-session--workspace-collapsed-p group-id)
@@ -568,9 +584,9 @@ baselines regroup hundreds of multibyte rows."
                     (jump-workspace
                      (dsh-emacs-session--row-pos
                       'dsh-emacs-workspace-group-id jump-workspace))
-                    (jump-id
+                    (jump-row-id
                      (dsh-emacs-session--row-pos
-                      'dsh-emacs-session-id jump-id))))
+                      'dsh-emacs-row-id jump-row-id))))
            ;; Without a pending jump the buffer's captured row decides point:
            ;; the row itself when it survived the redraw, a surviving neighbor
            ;; when it is gone (collapsed, archived), and the first session row

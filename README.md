@@ -84,7 +84,7 @@ theme's `shadow` face (grey by default); running session dots are orange.
 | `C-c C-o` | Load 3 earlier rounds; prefix chooses the count; press again to cancel |
 | `C-c >` | Return to the draft and follow new output |
 | `C-c C-w` / `C-c C-y` | Copy content / fork through the assistant reply at point |
-| `C-c C-l` | Return to the session list |
+| `C-c C-l` | Locate this session in the list ([jump preference](docs/customization.md#renaming-and-grouping)) |
 | `C-c C-s` / `C-c M-s` | Switch sessions in this workspace / across all workspaces |
 | `C-c C-r` | Refresh the chat |
 | `M-p` / `M-n` | Recall previous / next input |

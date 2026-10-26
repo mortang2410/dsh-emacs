@@ -252,6 +252,47 @@ window's own point behind, which the session list now preserves per window."
             (set-marker recent nil)
             (set-marker original nil)))))))
 
+(ert-deftest dsh-emacs-test-session-jump-target ()
+  :tags '(dsh-unit)
+  (let ((dsh-emacs--archived-sessions (make-hash-table :test #'equal))
+        (dsh-emacs--current-session nil)
+        (dsh-emacs--subagent-catalogs (make-hash-table :test #'equal))
+        (dsh-emacs--sessions
+         (dsh-emacs-test--session-items
+          '(((sessionId . "a") (updatedAt . 20))
+            ((sessionId . "b") (updatedAt . 10)))))
+        (dsh-emacs--workspaces
+         (list (dsh-protocol-workspace--from-alist
+                '((workspaceId . "ws") (title . "Project")
+                  (sessionIds . ["a" "b"]))))))
+    (dolist (preference '(workspace recents))
+      (dolist (limit '(0 1))
+        (dolist (session '("a" "b"))
+          (let ((dsh-emacs-session-jump-target preference)
+                (dsh-emacs-session-recents-limit limit))
+            (with-temp-buffer
+              (dsh-emacs-session--render)
+              (dsh-emacs-collapse-workspaces)
+              (setq dsh-emacs-session--auto-jump-session session)
+              (dsh-emacs-session--render)
+              (let* ((recent-p (and (eq preference 'recents)
+                                    (= limit 1) (equal session "a")))
+                     (row (if recent-p (list :recents session) session)))
+                (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                               row))
+                (should-not dsh-emacs-session--auto-jump-session)
+                (should-not (dsh-emacs-session--workspace-collapsed-p
+                             (if recent-p :recents "ws")))
+                (when (= limit 1)
+                  (should (dsh-emacs-session--workspace-collapsed-p
+                           (if recent-p "ws" :recents))))
+                ;; Changing the preference does not redirect a refresh.
+                (let ((dsh-emacs-session-jump-target
+                       (if (eq preference 'workspace) 'recents 'workspace)))
+                  (dsh-emacs-session--render)
+                  (should (equal (get-text-property (point) 'dsh-emacs-row-id)
+                                 row)))))))))))
+
 (ert-deftest dsh-emacs-test-session-recents-fold-and-rank-changes ()
   :tags '(dsh-unit)
   (let ((dsh-emacs-session-recents-limit 1)
