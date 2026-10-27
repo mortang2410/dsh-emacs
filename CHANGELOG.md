@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format follows
 sections carry the planned next version (pre-1.0: `fix` → patch, features →
 minor) and stay undated until the release is cut.
 
+## 0.7.1 - Unreleased
+
+### Fixed
+
+- **Respect manual server management in the session list**: when automatic
+  startup is disabled, an unreachable server produces guidance instead of
+  attempting to start a local server or install the CLI.
+
 ## 0.7.0 - 2026-10-23
 
 Compatible with **dsh 0.2.1-rc.2**, the latest upstream release as of

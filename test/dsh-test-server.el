@@ -675,6 +675,53 @@
     (ert-info ((format "%s" "server-wait-ready-alive-returns-t"))
       (should (eq t (dsh-emacs--server-wait-ready))))))
 
+(ert-deftest dsh-emacs-test-server-list-sessions-honours-auto-start ()
+  :tags '(dsh-unit)
+  (let ((noninteractive nil)
+        (dsh-emacs-base-url "http://127.0.0.1:3080")
+        (dsh-emacs-server-auto-start nil)
+        (started 0)
+        (polled nil)
+        err)
+    (cl-letf (((symbol-function 'dsh-emacs--server-alive-p) (lambda () nil))
+              ((symbol-function 'dsh-emacs-server-start)
+               (lambda (&optional _wait) (cl-incf started) nil))
+              ((symbol-function 'dsh-emacs-list-sessions--fetch-when-ready)
+               (lambda (_deadline) (setq polled t))))
+      (setq err (condition-case caught
+                    (progn (dsh-emacs-list-sessions) nil)
+                  (user-error caught)))
+      (should (= started 0))
+      (should (eq (car err) 'user-error))
+      (should (string-match-p "M-x dsh-emacs-server-start"
+                              (error-message-string err)))
+      (should (string-match-p "dsh-emacs-server-auto-start"
+                              (error-message-string err)))
+      (should-not polled)
+      (setq dsh-emacs-server-auto-start t)
+      (dsh-emacs-list-sessions)
+      (should (= started 1))
+      (should polled))))
+
+(ert-deftest dsh-emacs-test-server-list-sessions-external-server-ready ()
+  :tags '(dsh-unit)
+  (let ((noninteractive nil)
+        (dsh-emacs-server-auto-start nil)
+        (started nil)
+        (authenticated nil)
+        (fetched nil))
+    (cl-letf (((symbol-function 'dsh-emacs--server-alive-p) (lambda () t))
+              ((symbol-function 'dsh-emacs-server-start)
+               (lambda (&optional _wait) (setq started t)))
+              ((symbol-function 'dsh-emacs--server-auth-ensure-interactive)
+               (lambda () (setq authenticated t)))
+              ((symbol-function 'dsh-emacs-list-sessions--fetch)
+               (lambda () (setq fetched t))))
+      (dsh-emacs-list-sessions))
+    (should-not started)
+    (should authenticated)
+    (should fetched)))
+
 ;; --- Test 89b: list-sessions polls for the grace period a blocking start
 ;; would use, not a fixed few seconds ---
 ;; A cold `dsh web' boot composes the profile and loads the whole plugin tree
@@ -733,10 +780,8 @@
 
 ;; --- Test 91: command-body guardrail -- error with guidance when the server is
 ;; unreachable ---
-;; The guardrail is in `dsh-emacs-server-ensure' (the entry point of commands such as
-;; switch-session): list-sessions takes `dsh-emacs-server-start's auto-start path and
-;; does not error, so this tests ensure's real behavior (it previously tested
-;; list-sessions and never triggered).
+;; The guardrail is in `dsh-emacs-server-ensure', also used by commands such as
+;; switch-session and by list-sessions when automatic startup is disabled.
 (ert-deftest dsh-emacs-test-server-list-sessions-guard-fails-with-guidance ()
   :tags '(dsh-unit)
   (let ((dsh-emacs-server-auto-start nil)

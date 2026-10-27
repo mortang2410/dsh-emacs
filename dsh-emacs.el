@@ -663,10 +663,13 @@ loads the plugin tree, which does not fit in a fixed few seconds."
 (defun dsh-emacs-list-sessions ()
   "Fetch the session list and refresh workspaces."
   (interactive)
-  ;; Non-blocking: launch the server in the background if needed.
-  ;; When the server was just started, poll until it's ready before
-  ;; firing the RPC to avoid a 404 race.
-  (let ((alive (dsh-emacs-server-start)))
+  ;; Launch in the background only when automatic startup is enabled.
+  ;; Otherwise ensure an external server is reachable without starting one.
+  ;; When just started, poll until ready before firing the RPC.
+  (let ((alive (if dsh-emacs-server-auto-start
+                   (dsh-emacs-server-start)
+                 (dsh-emacs-server-ensure)
+                 t)))
     (if alive
         (dsh-emacs-list-sessions--fetch)
       ;; Server just launched — wait for it within the same grace period a
