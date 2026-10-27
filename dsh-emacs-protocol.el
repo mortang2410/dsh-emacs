@@ -1584,6 +1584,51 @@ private.  Missing or invalid counts remain nil; an empty wire array is zero."
                       (dsh-protocol--field 'error data))
          :command-id (dsh-protocol--field 'sourceCommandId data))))))
 
+;;; ---------------------------------------------------------------------------
+;;; History round classification
+;;; ---------------------------------------------------------------------------
+
+(defun dsh-protocol--event-user-authored-p (event)
+  "Whether the `user/message' EVENT is author text.
+A source-less message is author text for legacy fixtures and optimistic
+echoes; every recorded non-`user' source (child, goal, context, plugin) is
+not."
+  (let* ((data (dsh-protocol--field 'data event))
+         (source (dsh-protocol--field 'source data))
+         (kind (dsh-protocol--field 'kind source)))
+    (or (null kind) (equal kind "user"))))
+
+(defun dsh-protocol-history-human-rounds (records)
+  "Return (TURN SEQ RECORD) for human rounds in RECORDS, oldest first.
+RECORDS is an accumulated `session/page' history list, oldest first.  A human
+round is a turn containing a user-authored `user/message'; child, goal and
+other host wakes are not rounds by this definition.  The turn's own
+`turn/start' record supplies SEQ and RECORD.  Scanning the accumulated list
+(not one page) keeps a message-aligned page boundary from splitting a turn's
+start from its user message."
+  (let (rounds current)
+    (dolist (record records)
+      (let* ((event (dsh-protocol--field 'event record))
+             (type (dsh-protocol--field 'type event))
+             (data (dsh-protocol--field 'data event)))
+        (when (equal type "turn/start")
+          (when (and current (nth 3 current))
+            (push current rounds))
+          (let ((turn (dsh-protocol--field 'turn data)))
+            (setq current
+                  (and (natnump turn)
+                       (list turn (dsh-protocol--field 'seq event)
+                             record nil)))))
+        (when (and current
+                   (equal type "user/message")
+                   (dsh-protocol--event-user-authored-p event))
+          (setf (nth 3 current) t))))
+    (when (and current (nth 3 current))
+      (push current rounds))
+    (mapcar (lambda (round)
+              (list (nth 0 round) (nth 1 round) (nth 2 round)))
+            (nreverse rounds))))
+
 (cl-defstruct (dsh-protocol-follow-snapshot
                (:constructor dsh-protocol-follow-snapshot--from-alist
                              (value &aux
@@ -1597,16 +1642,9 @@ private.  Missing or invalid counts remain nil; an empty wire array is zero."
                                 raw-records))
                               (has-more (dsh-protocol--boolean
                                          (dsh-protocol--field 'hasMore value)))
-                              (round-count
-                               (cl-count-if
-                                (lambda (record)
-                                  (let ((event (dsh-protocol--field 'event record)))
-                                    (and (equal (dsh-protocol--field 'type event)
-                                                "turn/start")
-                                         (natnump (dsh-protocol--field
-                                                   'turn (dsh-protocol--field
-                                                          'data event))))))
-                                records))
+                              (human-round-count
+                               (length (dsh-protocol-history-human-rounds
+                                        records)))
                               (execution
                                (delq nil
                                      (mapcar
@@ -1623,11 +1661,12 @@ private.  Missing or invalid counts remain nil; an empty wire array is zero."
   "A follow stream's opening transcript and presentation baseline.
 RECORDS retain raw durable event records in wire order for the renderer;
 unlike a backward history page, this view imposes no sequence validation.
-ROUND-COUNT counts valid turn starts in RECORDS, including an active round.
+HUMAN-ROUND-COUNT counts turns in RECORDS with a user-authored message,
+including an active human round.
 EXECUTION covers the whole window, including events below the render anchor.
 PLAN is applied before history can yield; PROJECTIONS stay raw until their
 late decoding boundary.  An absent ASSISTANT is an empty baseline."
-  cursor records has-more round-count execution plan assistant projections)
+  cursor records has-more human-round-count execution plan assistant projections)
 
 (cl-defstruct (dsh-protocol-follow-item
                (:constructor dsh-protocol-follow-item--from-alist
@@ -2205,28 +2244,29 @@ Both decisions are result values, not rejected waterfall errors."
 ;; pagination and round metadata are decoded here for the history controller.
 (cl-defstruct (dsh-protocol-history-page
                (:constructor dsh-protocol--make-history-page))
+  "One decoded `session/page' history window.
+RECORDS retain raw events and OLDEST/NEWEST are its sequence cursors.  ROUNDS
+is supplied by the history loader from
+`dsh-protocol-history-human-rounds' over the accumulated records; the wire
+page has no round classification."
   records oldest newest has-more rounds)
 
 (defun dsh-protocol-history-page--from-alist (value)
-  "Decode VALUE into records, an oldest cursor and (ROUND SEQ RECORD) starts."
-  (let (records rounds oldest previous)
+  "Decode VALUE into records, an oldest/newest cursor and has-more.
+The history loader supplies the page's human ROUNDS from the accumulated
+records."
+  (let (records oldest previous)
     (dolist (record (dsh-protocol--objects (dsh-protocol--field 'records value)))
       (when (equal (dsh-protocol--field 'type record) "event")
         (let* ((event (dsh-protocol--field 'event record))
-               (seq (dsh-protocol--field 'seq event))
-               (turn (dsh-protocol--field
-                      'turn (dsh-protocol--field 'data event))))
+               (seq (dsh-protocol--field 'seq event)))
           (unless (and (natnump seq) (or (null previous) (> seq previous)))
             (error "History page has invalid or unordered event sequence: %S" seq))
           (unless oldest (setq oldest seq))
           (setq previous seq)
-          (push record records)
-          (when (and (equal (dsh-protocol--field 'type event) "turn/start")
-                     (natnump turn))
-            (push (list turn seq record) rounds)))))
+          (push record records))))
     (dsh-protocol--make-history-page
      :records (nreverse records) :oldest oldest :newest previous
-     :rounds (nreverse rounds)
      :has-more (dsh-protocol--boolean (dsh-protocol--field 'hasMore value)))))
 
 (defun dsh-protocol-history-page-request (session address through before limit rounds)

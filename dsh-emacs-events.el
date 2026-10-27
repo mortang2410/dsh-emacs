@@ -689,7 +689,8 @@ VALUE may already be a decoded `dsh-protocol-follow-snapshot'."
   (when (buffer-live-p chat)
     (with-current-buffer chat
       (pcase-let* (((cl-struct dsh-protocol-follow-snapshot
-                              cursor (records entries) has-more round-count
+                              cursor (records entries) has-more
+                              human-round-count
                               execution plan (assistant baseline) projections)
                    (dsh-protocol--struct
                     #'dsh-protocol-follow-snapshot-p
@@ -756,11 +757,13 @@ VALUE may already be a decoded `dsh-protocol-follow-snapshot'."
           (xref-push-marker-stack dsh-emacs--subagent-departure)
           (setq dsh-emacs--subagent-departure nil))
         (setq dsh-emacs--ws-last-event-time (float-time))
-        ;; Complete only the latest round on opening.  The manual pagination
-        ;; target must not multiply automatic work for long rounds.  Reconnects
-        ;; must not restart a canceled load or extend a browsed transcript.
+        ;; Complete only the latest human round on opening.  A snapshot that
+        ;; starts at a child/goal wake has no user prompt, so it backs up to
+        ;; the preceding human round.  The manual pagination target must not
+        ;; multiply automatic work for long rounds.  Reconnects must not
+        ;; restart a canceled load or extend a browsed transcript.
         (when (and initial entries has-more (integerp cursor)
-                   (zerop round-count))
+                   (zerop human-round-count))
           (dsh-emacs-history--start-load 1))))))
 
 (defun dsh-emacs-events--apply-snapshot-projections (session-id projections)

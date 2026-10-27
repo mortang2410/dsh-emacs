@@ -58,9 +58,10 @@ or expand available subagents.
 From a local project, the command locates its existing workspace; from a chat,
 it locates that session. New sessions open an editable draft while connecting.
 Opening an existing session in a fresh chat buffer completes only the latest
-round, fetching extra pages for a long round without moving your draft cursor.
-`C-c C-o` cancels an in-progress history load; once finished, it loads 3 earlier
-rounds by default (`dsh-emacs-history-rounds`). Switching back to a live chat
+human round (a turn with a user-authored message), fetching extra pages for a
+long round without moving your draft cursor. `C-c C-o` cancels an in-progress
+history load; once finished, it loads 3 earlier user+assistant rounds by
+default (`dsh-emacs-history-rounds`). Switching back to a live chat
 preserves it.
 
 The PTC mode preset ID is now `ptc`. If your configuration sets
@@ -81,7 +82,7 @@ theme's `shadow` face (grey by default); running session dots are orange.
 | `C-c C-m` / `C-c C-e` | Select a model / change reasoning effort |
 | `C-c C-a` | Stage a file; repeat to add more |
 | `C-c C-v` / `C-c C-d` | Paste a clipboard image / discard staged attachments |
-| `C-c C-o` | Load 3 earlier rounds; prefix chooses the count; press again to cancel |
+| `C-c C-o` | Load 3 earlier user+assistant rounds; prefix chooses the count; press again to cancel |
 | `C-c >` | Return to the draft and follow new output |
 | `C-c C-w` / `C-c C-y` | Copy content / fork through the assistant reply at point |
 | `C-c C-l` | Locate this session in the list ([jump preference](docs/customization.md#renaming-and-grouping)) |

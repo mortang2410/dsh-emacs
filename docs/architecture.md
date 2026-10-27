@@ -1381,9 +1381,11 @@ the intentionally bounded syntax and differences from the Web renderer.
   [147](../postmortem/147-open-session-buffer-reuse.md)).  The snapshot carries
   a `cursor` plus message-aligned `records`: `turnWindow` requests
   one round start, bounded by `dsh-emacs-history-window` messages per response.
-  The protocol decoder counts starts in the snapshot; on first open, Events
-  asks the history controller to complete one round only if no start is
-  present, after applying the snapshot and projections. The manual
+  The protocol decoder counts human rounds (turns with a user-authored
+  message) in the snapshot; on first open, Events asks the history controller
+  to complete one human round only if no human round is present, after
+  applying the snapshot and projections. A snapshot that starts at a child or
+  goal wake therefore backs up to the preceding user turn. The manual
   `dsh-emacs-history-rounds` target does not affect opening. The live follow
   stream stays gapless. Reconnects do not start another automatic history load.
 - **Reconnect is self-healing**: the reconnect socket pins `no-conversion` — on
@@ -1448,17 +1450,26 @@ It uses user-message text properties rather than maintaining another message
 index. Imenu targets are advancing markers and auto-rescan refreshes loaded
 questions. Previous/next question commands are not added.
 
-`C-c C-o` requests `dsh-emacs-history-rounds` complete rounds (default 3),
-overridable by a numeric prefix. The protocol constructor decodes records,
-oldest/newest sequence numbers, `hasMore`, and `(ROUND SEQ RECORD)` boundaries.
-`session/page` receives `turnWindow` with `minMessages: 1` and the remaining
-round count. `maxMessages` stays bounded by `dsh-emacs-history-window`.
-A partial oldest round counts as the first round to complete. This uses
-original server round numbers, including autonomous continuations. Opening
-uses the same request builder and loop to complete only the latest round,
-with no initiating window to visit; manual loads retain their jump behavior.
+`C-c C-o` requests `dsh-emacs-history-rounds` complete human rounds (default
+3), overridable by a numeric prefix. A human round is a turn containing a
+user-authored message; child, goal and other host-woken turns are grouped with
+the human round that preceded them. The protocol constructor decodes records,
+oldest/newest sequence numbers and `hasMore`; the loader derives human rounds
+from the accumulated records, so a message-aligned page boundary cannot split
+a turn's start from its user message. `session/page` receives `turnWindow` with
+`minMessages: 1` and the remaining human-round count; because the server counts
+turns, the loop repeats until enough human rounds are staged. `maxMessages`
+stays bounded by `dsh-emacs-history-window`. A loaded page starts at the oldest
+kept human round's `turn/start`; a leading child or goal turn is deferred to
+the previous round's page instead of topping the range. A partial oldest human
+round counts as the first round to complete. This uses original server round
+numbers, including autonomous continuations. Opening uses the same request
+builder and loop to complete only the latest human round, with no initiating
+window to visit; manual loads retain their jump behavior.
 See [152](../postmortem/152-open-single-round.md), which narrows the automatic
-target introduced by [148](../postmortem/148-open-complete-rounds.md).
+target introduced by [148](../postmortem/148-open-complete-rounds.md), and
+[160](../postmortem/160-history-human-rounds.md), which defines the human
+round used by both.
 
 One buffer-local request plist stages records across bounded RPCs. Before
 publishing, the loader checks request identity, session/address, the original

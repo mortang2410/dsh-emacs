@@ -102,7 +102,7 @@ The most commonly used options, straight in your config:
 (setq dsh-emacs-base-url "http://127.0.0.1:3080")  ; dsh service URL; a `?token=...` query (the URL dsh prints) is read for auth and stripped before paths are appended
 (setq dsh-emacs-server-auth-token nil)         ; launch token for dsh web 0.1.2-rc.1+; nil = auto-captured from a server dsh-emacs starts itself.  Set it for a server YOU run externally (a fresh random value every server restart).  When pointing at an external auth-requiring server with no token set, dsh-emacs asks you for it; a token that successfully authenticates is remembered here automatically (saved), so the next session reuses it — only a stale token (validation fails after a server restart) re-prompts, pre-filled for editing.  Successful authentication also caches the cookie instead of showing a Basic username/password prompt
 (setq dsh-emacs-history-window 30)                  ; maximum messages per opening or older-history network batch
-(setq dsh-emacs-history-rounds 3)                  ; complete earlier rounds per C-c C-o; opening always completes only one
+(setq dsh-emacs-history-rounds 3)                  ; complete earlier user+assistant rounds per C-c C-o; opening always completes only one
 (setq dsh-emacs-show-reasoning t)                  ; show reasoning content (on by default; nil = hide, unlike dsh web)
 (setq dsh-emacs-show-tool-calls t)                 ; show tool calls
 (setq dsh-emacs-stream-markdown-limit 8192)        ; pending characters before idle formatting; nil = synchronous
@@ -147,7 +147,7 @@ The most commonly used options, straight in your config:
 
 | Key | Command | Behavior |
 |---|---|---|
-| `C-c C-o` | `dsh-emacs-load-older-history` | Load 3 complete earlier rounds; invoke again while loading to cancel |
+| `C-c C-o` | `dsh-emacs-load-older-history` | Load 3 complete earlier user+assistant rounds; invoke again while loading to cancel |
 | `C-u 1 C-c C-o` | Same, with prefix | Load one complete earlier round |
 | `C-u 5 C-c C-o` | Same, with prefix | Load five complete earlier rounds |
 | `C-c >` | `dsh-emacs-goto-latest` | End of draft, following new output in this window |
@@ -157,18 +157,23 @@ Imenu frontend; the chat buffer installs its user-message index and rescans it
 automatically.
 
 `dsh-emacs-history-rounds` defaults to 3 and controls manual `C-c C-o` loads.
-Opening a fresh chat completes only the latest round, independently of this
-option: the initial snapshot appears first, then additional pages fetch that
-round's start if needed without moving your draft cursor. No extra pages are
-requested when the snapshot already contains a round start. Switching to an
-already-open chat reuses its existing transcript. Reconnects do not restart a
-canceled load. The active round counts too: completeness means including its
-start and all available events, not waiting for the assistant to finish.
+Opening a fresh chat completes only the latest human round, independently of
+this option: the initial snapshot appears first, then additional pages fetch
+that round's start if needed without moving your draft cursor. A snapshot that
+starts at a host-woken turn also backs up to the preceding human round. No
+extra pages are requested when the snapshot already contains a human round.
+Switching to an already-open chat reuses its existing transcript. Reconnects do
+not restart a canceled load. The active human round counts too: completeness
+means including its user message and all available following turns, not
+waiting for the assistant to finish.
 
-A round is a server `turn/start` boundary and all its following events up to
-the next round; a partially visible oldest round is completed first and counts
-toward the requested number. Automatic goal continuations count too. Rounds
-refer to the original server numbers, not a count of visible user questions.
+A **human round** is a turn containing a user-authored message. Child messages,
+settled subagents and goal continuations wake turns without a user prompt; they
+belong to the human round that preceded them. Child- and goal-woken turns
+therefore load with that earlier human round, and a loaded page starts at the
+oldest kept human round's turn. The numbers in `Loaded rounds X–Y` are turn
+numbers, so a run of host-woken turns inside the range is not counted in the
+round total.
 
 `dsh-emacs-history-window` limits messages per network batch, including the
 opening snapshot. Long rounds may take multiple requests: the smaller the

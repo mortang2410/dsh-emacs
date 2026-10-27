@@ -1378,5 +1378,36 @@
     (should-not (dsh-protocol-message-id message))
     (should-not (dsh-protocol-message-source-provider message))))
 
+(ert-deftest dsh-emacs-test-protocol-history-human-rounds ()
+  :tags '(dsh-unit)
+  (cl-labels ((record (type seq data)
+                (list (cons 'type "event")
+                      (cons 'event (list (cons 'type type)
+                                         (cons 'seq seq)
+                                         (cons 'data data))))))
+    (let* ((records
+            (list (record "turn/start" 1 '((turn . 1)))
+                  (record "user/message" 2
+                          '((content . [])
+                            (source . ((kind . "agent-message")))))
+                  (record "turn/start" 3 '((turn . 2)))
+                  (record "user/message" 4
+                          '((content . [])
+                            (source . ((kind . "user")))))
+                  (record "turn/start" 5 '((turn . 3)))
+                  (record "user/message" 6 '((content . [])))))
+           (snapshot (dsh-protocol-follow-snapshot--from-alist
+                      `((records . ,(vconcat records))
+                        (hasMore . :json-false)))))
+      ;; Only turns with a user-authored message are rounds; a source-less
+      ;; message remains author text for fixtures and optimistic echoes.
+      (should (equal '(2 3)
+                     (mapcar #'car
+                             (dsh-protocol-history-human-rounds records))))
+      (should (= 2 (dsh-protocol-follow-snapshot-human-round-count
+                    snapshot)))
+      (should (equal 3 (nth 1 (car (dsh-protocol-history-human-rounds
+                                    records))))))))
+
 (provide 'dsh-test-protocol)
 ;;; dsh-test-protocol.el ends here

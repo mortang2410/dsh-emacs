@@ -39,6 +39,17 @@ minor) and stay undated until the release is cut.
   Mid-turn, canceled and requeued injections stay hidden.
   (rationale: [postmortem/159](postmortem/159-turn-trigger-notices.md))
 
+- **History rounds follow user+assistant**: `C-c C-o` counts and starts a
+  loaded page at a turn with a user-authored message, so a child- or
+  goal-woken turn is loaded with the human round it belongs to instead of
+  topping the range as an orphan trigger and answer.  Opening a snapshot that
+  starts on such a turn backs up to the preceding user prompt.
+  (rationale: [postmortem/160](postmortem/160-history-human-rounds.md))
+
+- **Older-history exhaustion at the start**: pressing `C-c C-o` when only
+  non-round seed records remain now reports "Beginning of history" instead of
+  claiming to load history events with no round boundaries.
+
 - **Live session activity ordering**: sending a message now updates the
   session's cached activity time, so Recents and workspace rows reorder
   immediately. Activity received during a list refresh survives its snapshot,
