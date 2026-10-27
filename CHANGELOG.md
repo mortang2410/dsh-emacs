@@ -10,6 +10,17 @@ minor) and stay undated until the release is cut.
 
 ### Added
 
+- **Choose transcript event icons**: `dsh-emacs-render-style` defaults to
+  `full` (dsh-web SVG icons) and offers `simple`, where every event row leads
+  with one state-colored dot and the rest of the row uses the muted
+  `dsh-emacs-event-row-face`. The Think title is muted; its live dot keeps the
+  thinking accent and settles to grey when the fragment completes. Emoji
+  fallbacks are removed: on displays that cannot draw SVG, `full` uses one dot
+  for ordinary tool rows while goal tools and the Think, todo and turn-trigger
+  rows keep their text glyphs. Composer pause/clear and queued-message delete
+  use `||` and `✕` when Emacs cannot draw SVG; typed emoji still render.
+  (rationale: [postmortem/161](postmortem/161-event-icon-style.md))
+
 - **Hide Recents while filtering workspaces**: `w` shows only the selected
   workspace; clearing the filter restores Recents. (rationale: [postmortem/158](postmortem/158-filter-hides-recents.md))
 

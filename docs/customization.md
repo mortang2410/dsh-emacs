@@ -117,7 +117,8 @@ The most commonly used options, straight in your config:
 (setq dsh-emacs-busy-enter-behavior 'queue)          ; what C-c C-c does while a turn runs: `queue` lines input up as the next turn (default), `steer` wakes the running agent before its next step, `stop` interrupts like before; `C-u C-c C-c` explicitly sends a nonempty message with steer mode regardless of this setting or the local busy indicator, a blank input with no staged attachments interrupts a running turn, and `C-c C-b` interrupts explicitly (C-c C-q manages the queue)
 (setq dsh-emacs-question-skip-key "C-c C-s") ; key that skips the current ask question inside the reader (nil = no shortcut; empty input also skips)
 (setq dsh-emacs-ui-label-separator "·")            ; separator between Think/Tool title and its right-side summary ("" = plain gap)
-(setq dsh-emacs-tool-titles '(("pwsh" . "PowerShell"))) ; tool name -> display title overrides (icons stay per variant; unnamed tools get a humanized name, e.g. grep -> "Grep")
+(setq dsh-emacs-render-style 'full)             ; transcript event icons: full = dsh-web SVG icons (text/dot fallback without a graphical display or SVG), simple = one state-colored dot and muted row text
+(setq dsh-emacs-tool-titles '(("pwsh" . "PowerShell"))) ; tool name -> display title overrides (icons follow `dsh-emacs-render-style`; unnamed tools get a humanized name, e.g. grep -> "Grep")
 (setq dsh-emacs-attach-media-types '("image/png" "image/jpeg" "image/webp" "image/gif")) ; image types sent inline (`C-c C-a' file attach, `C-c C-v' clipboard paste, `M-x yank-media'); every other file is uploaded at submit time
 (setq dsh-emacs-attach-max-file-size (* 32 1024 1024)) ; largest staged file, in bytes; checked again at upload (nil = no limit; inline images are not governed by it)
 (setq dsh-emacs-render-image-thumbnail-lines 4)     ; height of one transcript image thumbnail, in text lines (dsh web uses 64px tiles); a lone image uses the same gallery style
@@ -142,6 +143,32 @@ The most commonly used options, straight in your config:
 (setq dsh-emacs-shell-timeout nil)                  ; nil = no limit; positive integer seconds only (surviving background children are untracked)
 (setq dsh-emacs-jobs-kill-arm-seconds 3)           ; how long the `k' press in the `C-c C-j' background-job menu stays armed before a second press stops the job (matches dsh web's two-press stop)
 ```
+
+## Render style
+
+`dsh-emacs-render-style` chooses what leads each transcript event row.
+`full` (the default) draws dsh-web's own SVG icons: per-tool variant icons,
+the Think sparkle, todo checklist, goal dartboard and turn-trigger paper
+plane. On non-graphical frames and in Emacs builds without SVG support there is
+no emoji fallback: ordinary tool rows use one dot in the tool accent, while
+goal tools and the Think, todo and turn-trigger rows keep their `◎`, `✶`, `▤`
+and `➤` text glyphs.
+
+- `simple` leads every event row with one dot and mutes the rest of the row:
+  titles and summaries use `dsh-emacs-event-row-face` (readable grey; labels
+  add bold) and status text uses the muted metadata face, so color is reserved
+  for the leading dot. Tool dots follow state (purple
+  `dsh-emacs-tool-icon-face` pending, green `dsh-emacs-tool-success-face`
+  success, red `dsh-emacs-tool-error-face` error,
+  `dsh-emacs-tool-stopped-face` stopped); the live Think dot uses
+  `dsh-emacs-thinking-face` and the completed fragment's dot joins the muted
+  row (its title text is muted too); todo `dsh-emacs-tool-icon-face`, goal
+  `dsh-emacs-composer-goal-face`, and turn-trigger `dsh-emacs-meta-face`.
+- The option restyles newly rendered rows only; reopen a session or wait for
+  new rows to update an existing transcript. The `⏸ interrupted` body line and
+  execution-status dots are unchanged; `simple` renders the interrupted tool
+  leading mark as a stopped-face dot instead of `◐`. Expanded card bodies keep
+  their own content colors (for example an error footer or a todo checkbox).
 
 ## Reading history
 
@@ -440,12 +467,14 @@ chat buffer, `C-c C-g` opens the goal-action prefix:
 | `C-c C-g ?` | Show the full objective and blocked reason |
 
 `dsh-emacs-composer-goal-actions` controls whether inline action buttons are
-shown by default. Hiding them leaves the keyboard commands available.
+shown by default. Hiding them leaves the keyboard commands available. When
+Emacs cannot draw SVG, the inline cells use text fallbacks: `||` pause, `▶`
+resume, `✎` edit and `✕` clear.
 Steering items take priority in the separate Next Message preview; hover for
 the full text, and click or press RET on the cells just after the preview: the
 up arrow sends that message now (steering the running turn, or re-submitting
 a text-only item while idle — the same verb RET runs in `C-c C-q`), `✎` edits its text
-in the minibuffer (text-only messages; the manager's `e`), and `🗑` deletes it
+in the minibuffer (text-only messages; the manager's `e`), and `✕` deletes it
 \(the manager's `d`). Before the server confirms a newly queued item, its
 preview has no action cells. Sending an item with attachments while idle
 reports an error and leaves the original item queued. `C-c C-q` manages the
@@ -558,7 +587,7 @@ If the window does close before an answer — for example because the question
 was queued behind another session's prompt — the question becomes **pending**
 instead of lost:
 
-- the transcript's ask row reads `❓ Ask question · pending`, and its expanded
+- the transcript's ask row reads `Ask question · pending`, and its expanded
   body keeps the questionnaire and names the recovery command;
 - `M-x dsh-emacs-answer-question` (`C-c C-p`) lists the session's pending
   questions (one call is answered directly; several are chosen by their first

@@ -150,9 +150,11 @@ Colored via `currentColor', mapped to the goal face's foreground by
 
 (defun dsh-emacs-composer--goal-icon ()
   "Return the goal SVG icon image string, or nil when SVG is unavailable.
-The result reserves two columns carrying the icon `display' property plus the
-composer goal face, so the row's chrome tag / read-only stay one run."
-  (when (image-type-available-p 'svg)
+Unavailable means no SVG image support or a non-graphical frame; callers then
+draw their text fallback.  The result reserves two columns carrying the icon
+`display' property plus the composer goal face, so the row's chrome tag /
+read-only stay one run."
+  (when (and (display-graphic-p) (image-type-available-p 'svg))
     (let ((fg (face-foreground 'dsh-emacs-composer-goal-face nil t)))
       (propertize "  "
                   'face 'dsh-emacs-composer-goal-face
@@ -238,9 +240,11 @@ composer goal face, so the row's chrome tag / read-only stay one run."
 
 (defun dsh-emacs-composer--action-image (svg &optional face)
   "Return an image display spec for action SVG, or nil.
-SVG is colored through `currentColor' mapped to FACE's foreground, defaulting
-to `dsh-emacs-composer-goal-action-face'."
-  (and (image-type-available-p 'svg)
+Nil means no SVG image support or a non-graphical frame; callers then show
+their text fallback.  SVG is colored through `currentColor' mapped to FACE's
+foreground, defaulting to `dsh-emacs-composer-goal-action-face'."
+  (and (display-graphic-p)
+       (image-type-available-p 'svg)
        (let* ((face (or face 'dsh-emacs-composer-goal-action-face))
               (color (or (face-foreground face nil t) "gray50")))
          (create-image svg 'svg t
@@ -342,10 +346,10 @@ highlight and HELP, so a read-only Composer row hosts real click targets."
   "Return (GLYPH . SVG) of the dsh web goal action KEY, or nil.
 KEY is pause / resume / edit / clear."
   (pcase key
-    ('pause (cons "⏸" dsh-emacs-composer--pause-svg))
+    ('pause (cons "||" dsh-emacs-composer--pause-svg))
     ('resume (cons "▶" dsh-emacs-composer--resume-svg))
     ('edit (cons "✎" dsh-emacs-composer--edit-svg))
-    ('clear (cons "🗑" dsh-emacs-composer--clear-svg))))
+    ('clear (cons "✕" dsh-emacs-composer--clear-svg))))
 
 (defun dsh-emacs-composer--goal-action-strip (goal)
   "Return (STRING . WIDTH-COLUMNS) of the clickable action cells for GOAL.
@@ -454,7 +458,7 @@ Graphical Emacs renders dsh web's queue glyph tinted from
 Row's dartboard takes; terminal Emacs falls back to that face's one-column
 `≡' plus a space, so both paths keep the row's column budget.  Callers add
 the separating space."
-  (if (image-type-available-p 'svg)
+  (if (and (display-graphic-p) (image-type-available-p 'svg))
       (propertize
        "  " 'face 'dsh-emacs-composer-next-face 'display
        (create-image dsh-emacs-composer--next-icon-svg 'svg t
@@ -505,7 +509,7 @@ click runs the same queue verb the `C-c C-q' manager binds to `s', `e' or `d'."
                  (dsh-emacs-queue--edit item text)))))))
     ('delete
      (dsh-emacs-composer--action-cell
-      "🗑" dsh-emacs-composer--clear-svg 'dsh-emacs-composer-next-action-face
+      "✕" dsh-emacs-composer--clear-svg 'dsh-emacs-composer-next-action-face
       "Delete queued message · C-c C-q d"
       (lambda () (interactive) (dsh-emacs-queue--delete item))))))
 

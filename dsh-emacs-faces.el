@@ -218,7 +218,7 @@ Used by the Composer Next Message glyph."
   `((((background light)) :foreground ,dsh-emacs-color-user :weight bold)
     (((background dark))  :foreground ,dsh-emacs-color-user-dark :weight bold)
     (t :inherit font-lock-keyword-face :weight bold))
-  "User message label (👤 you)."
+  "User message label (You)."
   :group 'dsh-emacs-faces)
 
 (defface dsh-emacs-user-block-face
@@ -248,7 +248,7 @@ must place this face before the title face in the face list."
   `((((background light)) :foreground ,dsh-emacs-color-assistant :weight bold)
     (((background dark))  :foreground ,dsh-emacs-color-assistant-dark :weight bold)
     (t :inherit font-lock-string-face :weight bold))
-  "Assistant message label (🤖 Assistant)."
+  "Assistant message label (Assistant)."
   :group 'dsh-emacs-faces)
 
 (defface dsh-emacs-assistant-body-face
@@ -395,6 +395,14 @@ icons).  A blue accent was tried first and read as a second link color."
 (defface dsh-emacs-tool-title-face
   '((t :inherit bold))
   "Tool card header title (tool variant name)."
+  :group 'dsh-emacs-faces)
+
+(defface dsh-emacs-event-row-face
+  '((t :inherit dsh-emacs-reply-meta-face))
+  "Muted text for the `simple' render style.
+Readable grey, one tier below message bodies; event-row labels add bold.
+The completed Think dot also uses it, while the live dot keeps the thinking
+accent.  Other colored dots and expanded card bodies keep their own faces."
   :group 'dsh-emacs-faces)
 
 (defface dsh-emacs-tool-io-face

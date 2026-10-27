@@ -348,14 +348,15 @@ the kill ring. Forward kills also preserve the structural separator newline.
 
 The Goal Row shows the session's current goal as one read-only line (a leading
 dartboard goal SVG icon mirroring dsh web — the `◎ ` text is a fallback when
-Emacs lacks SVG support — tinted with the tool purple shared by the
-transcript goal round notice and the goal tool cards), followed by a prominent
-status label (`Ongoing Goal`, `Paused Goal` or `Blocked Goal`), a muted,
-upright objective (folded to one line, with a canonical session mention
+Emacs cannot draw SVG (a non-graphical frame or no SVG support) — tinted with
+the tool purple shared by the
+transcript goal round notice and the goal tool cards), followed by a
+prominent status label (`Ongoing Goal`, `Paused Goal` or `Blocked Goal`), a
+muted, upright objective (folded to one line, with a canonical session mention
 collapsed to its clickable `@label` chip as in the transcript message that
 named the goal) and compact dsh-web pause/resume/edit/clear **SVG**
-action icons (unicode fallback), one space after the objective and between
-icons. The row uses the buffer background and
+action icons (text fallbacks `||`, `▶`, `✎`, `✕`), one space after the
+objective and between icons. The row uses the buffer background and
 appears only when an unfinished goal exists, fed
 **passively** from the server `goal` session projection (`rpc.md §9`):
 `session/control` projection frames and the `session/follow` snapshot route to
@@ -548,10 +549,12 @@ commands and spawn Emacs's `shell-file-name` with `-c`
 asynchronously (`make-process`) with the chat buffer's `default-directory` —
 the session workspace — as working directory.  The result row is rendered by
 `dsh-emacs-render-shell-start` / `dsh-emacs-render-shell-done` in
-`dsh-emacs-render.el`, reusing the slash-command row machinery (bash icon,
-`-\|/` spinner, pending tint, success/error restyle): a `!` row rides the
-same `dsh-emacs--command-blocks` / spinner tables under its own monotonic
-`shell-N` id.  Process tracking is buffer-local (`dsh-emacs--shell-procs`).
+`dsh-emacs-render.el`, reusing the slash-command row machinery (bash icon in
+`full`, one dot in `simple` or on a display that cannot draw SVG, `-\|/`
+spinner, and state color carried by the dot and, in `full`, the header tint):
+a `!` row rides the same `dsh-emacs--command-blocks` / spinner tables under its
+own monotonic `shell-N` id.  Process tracking is buffer-local
+\(`dsh-emacs--shell-procs`).
 Killing the chat buffer or resetting its major mode kills the tracked shell
 before its tracking is discarded. `C-c C-!`
 (`dsh-emacs-shell-process-kill`) interrupts a running one, rendered as

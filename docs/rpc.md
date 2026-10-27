@@ -2741,7 +2741,7 @@ projection cell `{active, settled}`.
    value.
 
 **dsh-emacs** (postmortem/073): holds `attachWait` around the read, renders the
-expired result as `❓ Ask question · pending`, answers a continued call with
+expired result as `Ask question · pending`, answers a continued call with
 `M-x dsh-emacs-answer-question` (`C-c C-p`), and completes the original card from
 `settled`. Dormant against a 0.1.7 server (no `wait`, no cell).
 

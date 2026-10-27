@@ -693,7 +693,7 @@ both followers' prompts above their viewports."
     (let ((frag (dsh-emacs-ui-make-fragment
                  :namespace-id "test"
                  :block-id "1"
-                 :label-left "👤 You"
+                 :label-left "You"
                  :label-right "12:00"
                  :body "hello"
                  :style 'rounded)))

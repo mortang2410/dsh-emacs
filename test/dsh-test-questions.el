@@ -26,7 +26,18 @@
   :tags '(dsh-unit)
   (ert-info ((format "%s" "ask-tool-uses-question-variant"))
     (should (equal "question" (car (dsh-emacs-render--tool-variant "ask_user_question"))))
-    (should (equal "❓" (cdr (assoc "question" dsh-emacs--variant-icons))))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'image-type-available-p) (lambda (&rest _) t))
+              ((symbol-function 'create-image) (lambda (svg &rest _) svg)))
+      (should (string-match-p
+               "M12.5757 7.00012"
+               (get-text-property
+                0 'display
+                (cdr (dsh-emacs-render--tool-variant "ask_user_question"))))))
+    (let ((dsh-emacs-render-style 'simple))
+      (should (equal "●" (substring-no-properties
+                          (cdr (dsh-emacs-render--tool-variant
+                                "ask_user_question"))))))
     (should (stringp (cdr (assoc "question" dsh-emacs--tool-icon-svgs))))))
 
 (ert-deftest dsh-emacs-test-questions-ask-pending-card-shows-questionnaire ()
@@ -698,7 +709,7 @@
             ;; No tab is inserted any more: after the answer the buffer has no question card
             (let ((text (with-current-buffer chat (buffer-string))))
               (ert-info ((format "%s" "question-frame-inserts-no-card"))
-                (should (not (string-match-p "❓ Question" text)))))))
+                (should (not (string-match-p "Question" text)))))))
       (when (buffer-live-p chat) (kill-buffer chat)))))
 
 ;; 4) multi-question frame: sequential per-question minibuffer selection, only one
@@ -748,7 +759,7 @@
             ;; Still no card is inserted (pure minibuffer answering)
             (let ((text (with-current-buffer chat (buffer-string))))
               (ert-info ((format "%s" "question-multi-inserts-no-card"))
-                (should (not (string-match-p "❓ Question" text)))))))
+                (should (not (string-match-p "Question" text)))))))
       (when (buffer-live-p chat) (kill-buffer chat)))))
 
 ;; 5) frame dispatch: C-g/ESC -> abandon the whole question group: answered with

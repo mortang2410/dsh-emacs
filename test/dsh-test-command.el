@@ -509,6 +509,43 @@
       (setq dsh-emacs--command-spinners old-spinners)
       (kill-buffer buf))))
 
+(ert-deftest dsh-emacs-test-command-simple-render-style-keeps-row-neutral ()
+  :tags '(dsh-unit)
+  (let ((buf (generate-new-buffer " *dsh-cmd-neutral*"))
+        (old-spinners dsh-emacs--command-spinners)
+        (dsh-emacs-render-style 'simple))
+    (unwind-protect
+        (with-current-buffer buf
+          (dsh-emacs-mode)
+          (setq dsh-emacs--command-spinners (make-hash-table :test 'equal))
+          (dsh-emacs-render-event
+           '((type . "command/run") (seq . 61)
+             (data . ((commandId . "plain1") (name . "goal")))))
+          (dsh-emacs-render-event
+           '((type . "command/done") (seq . 62)
+             (data . ((commandId . "plain1") (kind . "success")
+                      (text . "ok")))))
+          (let* ((ns (dsh-emacs-render--make-namespace))
+                 (blk (dsh-emacs-ui-find-block ns "cmd-plain1")))
+            (ert-info ((format "%s" "command-simple-render-style-keeps-row-neutral"))
+              (should blk)
+              (let* ((start (car blk))
+                     (text (buffer-substring-no-properties start (cdr blk)))
+                     (title (ensure-list (get-text-property (+ start 2) 'face)))
+                     (status (+ start (string-match "✓ done" text)))
+                     (status-faces (ensure-list (get-text-property status 'face))))
+                (should (string-match-p "● Goal" text))
+                (should (memq 'dsh-emacs-tool-success-face
+                              (ensure-list (get-text-property start 'face))))
+                (should (memq 'dsh-emacs-event-row-face title))
+                (should-not (memq 'dsh-emacs-tool-title-face title))
+                (should-not (memq 'dsh-emacs-tool-success-face title))
+                (should (memq 'dsh-emacs-timestamp-face status-faces))
+                (should-not (memq 'dsh-emacs-tool-success-face
+                                  status-faces))))))
+      (setq dsh-emacs--command-spinners old-spinners)
+      (kill-buffer buf))))
+
 ;; --- Test 98d: an optimistic command row also carries header line pending
 ;; coloring ---
 (ert-deftest dsh-emacs-test-command-command-optimistic-tints-header ()
@@ -536,9 +573,9 @@
       (setq dsh-emacs--command-spinners old-spinners)
       (kill-buffer buf))))
 
-;; --- Test 98e: the leading icon of a command row is the bash terminal (same as
-;; tool rows) ---
-(ert-deftest dsh-emacs-test-command-command-leading-icon-is-bash ()
+;; --- Test 98e: the leading glyph of a command row is the bash fallback dot
+;; (or its SVG on a graphical display) ---
+(ert-deftest dsh-emacs-test-command-command-leading-glyph-is-dot ()
   :tags '(dsh-unit)
   (let ((buf (generate-new-buffer " *dsh-cmd-bash-icon*"))
         (old-spinners dsh-emacs--command-spinners))
@@ -550,26 +587,30 @@
            '((type . "command/run") (seq . 70)
              (data . ((commandId . "bash1") (name . "goal")))))
           (let ((txt (buffer-string)))
-            (ert-info ((format "%s" "command-leading-icon-is-bash"))
-              (should (string-match-p "💻" txt))))
-          ;; The bash icon is still kept after done
+            (ert-info ((format "%s" "command-leading-dot-is-bash-fallback"))
+              (should (string-match-p "\n● goal" txt))))
+          ;; The leading dot is still kept after done
           (dsh-emacs--command-spinner-tick (current-buffer) "bash1")
           (dsh-emacs-render-event
            '((type . "command/done") (seq . 71)
              (data . ((commandId . "bash1") (kind . "success")
                       (text . "ok")))))
           (let ((txt (buffer-string)))
-            (ert-info ((format "%s" "command-done-keeps-bash-icon"))
-              (should (string-match-p "💻" txt)))))
+            (ert-info ((format "%s" "command-done-keeps-leading-dot"))
+              (should (string-match-p "\n● goal" txt)))))
       (setq dsh-emacs--command-spinners old-spinners)
       (kill-buffer buf))))
 
-;; In batch (non-graphical) the icon table gives a bash emoji fallback; the SVG
-;; template exists for GUI rendering
-(ert-deftest dsh-emacs-test-command-command-bash-icon-emoji-fallback ()
+;; A non-graphical display falls back to one tool-accent dot even when Emacs
+;; has SVG image support; the SVG template exists for GUI rendering.
+(ert-deftest dsh-emacs-test-command-command-bash-icon-dot-fallback ()
   :tags '(dsh-unit)
-  (ert-info ((format "%s" "command-bash-icon-emoji-fallback"))
-    (should (equal (cdr (assoc "bash" dsh-emacs--variant-icons)) "💻"))))
+  (ert-info ((format "%s" "command-bash-icon-dot-fallback"))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) nil))
+              ((symbol-function 'image-type-available-p) (lambda (&rest _) t)))
+      (let ((icon (dsh-emacs-render--tool-icon "bash")))
+        (should (equal "●" (substring-no-properties icon)))
+        (should-not (get-text-property 0 'display icon))))))
 
 (ert-deftest dsh-emacs-test-command-command-bash-icon-svg-template ()
   :tags '(dsh-unit)

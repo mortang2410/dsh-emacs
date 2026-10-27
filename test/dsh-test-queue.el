@@ -719,7 +719,8 @@
 (ert-deftest dsh-emacs-test-queue-composer-next-icon-is-chrome ()
   :tags '(dsh-unit)
   (let ((item (dsh-emacs-test--queue-item "a" "queued" "Alpha")))
-    (cl-letf (((symbol-function 'image-type-available-p) (lambda (_type) t))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'image-type-available-p) (lambda (_type) t))
               ((symbol-function 'create-image)
                (lambda (_data _type _data-p &rest props) (cons 'image props))))
       (let* ((row (dsh-emacs-composer--render-next-row item))
@@ -751,7 +752,8 @@
         (edited nil)
         (deleted nil)
         (answer "Alpha fixed"))
-    (cl-letf (((symbol-function 'image-type-available-p) (lambda (_type) t))
+    (cl-letf (((symbol-function 'display-graphic-p) (lambda (&rest _) t))
+              ((symbol-function 'image-type-available-p) (lambda (_type) t))
               ((symbol-function 'create-image)
                (lambda (_data _type _data-p &rest props) (cons 'image props)))
               ((symbol-function 'read-string) (lambda (&rest _args) answer))
@@ -1010,7 +1012,8 @@
                              (and (string-search "Alpha" plain)
                                   ;; SVG available: the icon preview line starts with icon(space);
                                   ;; otherwise fall back to the text form
-                                  (if (image-type-available-p 'svg)
+                                  (if (and (display-graphic-p)
+                                           (image-type-available-p 'svg))
                                       (string-prefix-p " " plain)
                                     (string-search "≡" plain)))))))
             ;; Burst 2: remove frame (mirror cleared immediately, preview line not

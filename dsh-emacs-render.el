@@ -130,6 +130,20 @@ set to nil for a leaner transcript."
   :type 'boolean
   :group 'dsh-emacs-render)
 
+(defcustom dsh-emacs-render-style 'full
+  "Leading icon style for transcript event rows.
+`full' draws each row's own dsh-web icon: the per-tool SVG, the Think
+sparkle, the plan checklist, and the goal and turn-trigger glyphs.  Displays
+without SVG use their text or dot fallbacks.  `simple' replaces every event
+icon with one compact dot in the row's accent color, like pi or Claude Code;
+tool dots follow their pending/success/error/stopped state, while row labels
+and summaries use the muted `dsh-emacs-event-row-face' and status text stays
+muted, so the dot is the only colored row element.  This option affects newly
+rendered rows; reopen a session to restyle an existing transcript."
+  :type '(choice (const :tag "Full icons" full)
+                 (const :tag "Simplified dots" simple))
+  :group 'dsh-emacs-render)
+
 (defcustom dsh-emacs-enable-notifications t
   "Notify when a submitted run finishes or an interaction needs attention.
 Posts a desktop notification when a run ends, and when an ask-question or
@@ -292,32 +306,6 @@ web's keyed toolviews (WebRow): web_search uses the meridian-globe family
 (`dsh-emacs--tool-icon-svgs' \"web\") while local grep/glob keep the
 magnifier family.")
 
-(defconst dsh-emacs--variant-icons
-  '(("bash"   . "💻")
-    ("read"   . "📖")
-    ("search" . "🔍")
-    ("web"    . "🌐")
-    ("write"  . "✏️")
-    ("edit"   . "✏️")
-    ("code"   . "</>")
-    ("command" . "⚡")
-    ("question" . "❓")
-    ("others" . "✨"))
-  "Variant -> emoji fallback icon, mirroring dsh web's VariantIcons by meaning:
-- bash    = terminal            (IconApiOutline14)
-- read    = browse / open book  (IconBrowseOutline16)
-- search  = magnifying glass    (IconSearchOutline16)
-- web     = meridian globe      (IconGlobeOutline14, web_search's WebRow icon)
-- write   = pencil              (IconEditOutline16)
-- edit    = pencil              (IconEditOutline16)
-- code    = code brackets       (IconCodeOutline16)
-- command = lightning           (slash commands, IconFlash16 style)
-- question = question mark       (IconQuestionOutline14, the ask row's icon)
-- others  = sparkle             (IconSparkle16)
-
-The emoji is only a terminal / non-SVG fallback; graphical Emacs renders the
-real dsh-web SVG icons (see `dsh-emacs--tool-icon-svgs').")
-
 (defconst dsh-emacs--tool-icon-svgs
   ;; Each SVG template is the exact dsh-web icon (VARIANT_ICONS), with a
   ;; "__C__" placeholder for the fill color.  Path data was extracted from
@@ -334,9 +322,9 @@ real dsh-web SVG icons (see `dsh-emacs--tool-icon-svgs').")
     ("question" . "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 14 14\" fill=\"none\"><path d=\"M12.5757 7.00012C12.5757 3.92085 10.0794 1.42463 7.00012 1.42456C3.9208 1.42456 1.42456 3.9208 1.42456 7.00012C1.42463 10.0794 3.92085 12.5757 7.00012 12.5757C10.0793 12.5756 12.5756 10.0793 12.5757 7.00012ZM13.8002 7.00012C13.8001 10.7559 10.7559 13.8001 7.00012 13.8002C3.2443 13.8002 0.199291 10.7559 0.199219 7.00012C0.199219 3.24426 3.24426 0.199219 7.00012 0.199219C10.7559 0.199291 13.8002 3.2443 13.8002 7.00012Z\" fill=\"__C__\" stroke=\"none\"/><path d=\"M6.18042 8.68184C6.18043 8.09153 6.32893 7.34655 6.92127 6.8481C7.28566 6.54148 7.76104 6.27318 8.0022 6.10811C8.28964 5.91137 8.42234 5.76562 8.48328 5.58944C8.57774 5.31609 8.53121 5.00904 8.34912 4.76741C8.17409 4.53522 7.83879 4.32222 7.28186 4.32222C5.99668 4.32225 5.46969 5.11832 5.46949 5.78939H4.24414C4.24436 4.39942 5.36327 3.09691 7.28186 3.09688C8.17773 3.09688 8.89489 3.45606 9.32752 4.02999C9.75287 4.59438 9.86938 5.32775 9.64026 5.99019C9.44847 6.5444 9.04722 6.87743 8.69434 7.11898C8.29506 7.39226 8.02318 7.52192 7.70996 7.78548C7.51943 7.94582 7.40577 8.24899 7.40577 8.68184V8.75533H6.18042V8.68184Z\" fill=\"__C__\" stroke=\"none\"/><path d=\"M7.39455 9.44026V10.8109H6.16921V9.44026H7.39455Z\" fill=\"__C__\" stroke=\"none\"/></svg>")
     ("others" . "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\"><path d=\"M6.1 3.1Q6.6 7.8 11.3 8.3Q6.6 8.8 6.1 13.5Q5.6 8.8 0.9 8.3Q5.6 7.8 6.1 3.1Z\" fill=\"__C__\" stroke=\"none\"/><path d=\"M11.9 1Q12.2 3.7 14.9 4Q12.2 4.3 11.9 7Q11.6 4.3 8.9 4Q11.6 3.7 11.9 1Z\" fill=\"__C__\" stroke=\"none\"/><path d=\"M12.5 9.4Q12.7 11.4 14.7 11.6Q12.7 11.8 12.5 13.8Q12.3 11.8 10.3 11.6Q12.3 11.4 12.5 9.4Z\" fill=\"__C__\" stroke=\"none\"/></svg>"))
   "Variant -> dsh-web SVG icon template, with a \"__C__\" fill placeholder.
-Graphical Emacs renders these via `create-image'; terminal Emacs falls back to
-the emoji in `dsh-emacs--variant-icons'.  The \"web\" key (meridian globe,
-IconGlobeOutline14) is selected for web_search through
+Graphical Emacs renders these via `create-image'; displays without SVG fall
+back to the single dot in `dsh-emacs-render--simple-icon'.  The \"web\" key
+\(meridian globe, IconGlobeOutline14) is selected for web_search through
 `dsh-emacs--tool-name-icon-keys', mirroring dsh web's WebRow.")
 
 (defconst dsh-emacs--think-icon-svg-template
@@ -367,6 +355,27 @@ icon.  Add your own entries to curate custom tool names."
 ;;; Tool classification and summary
 ;;; ---------------------------------------------------------------------------
 
+(defun dsh-emacs-render--simple-icon (face)
+  "Return the simplified event-row glyph: one dot carrying FACE."
+  (propertize "●" 'face face))
+
+(defun dsh-emacs-render--row-label-face (accent)
+  "Return the face for an event-row label.
+In the `simple' style the leading dot is the only colored element, so the
+label uses `dsh-emacs-event-row-face' with bold weight; otherwise return
+ACCENT."
+  (if (eq dsh-emacs-render-style 'simple)
+      '(bold dsh-emacs-event-row-face)
+    accent))
+
+(defun dsh-emacs-render--row-chrome-face (face)
+  "Return FACE for event-row header chrome.
+In the `simple' style the leading dot is the only colored element, so the
+header row uses the muted `dsh-emacs-event-row-face'."
+  (if (eq dsh-emacs-render-style 'simple)
+      'dsh-emacs-event-row-face
+    face))
+
 (defun dsh-emacs-render--tool-icon-svg (variant color &optional tool-name)
   "Return the dsh-web SVG icon for VARIANT, filled with COLOR.
 TOOL-NAME selects a per-tool icon override (`dsh-emacs--tool-name-icon-keys')
@@ -382,27 +391,26 @@ meridian globe; grep/glob keep the magnifier family)."
 (defun dsh-emacs-render--tool-icon (variant &optional tool-name)
   "Return VARIANT's icon as a display string.
 TOOL-NAME picks a per-tool icon override (`dsh-emacs--tool-name-icon-keys').
-In graphical Emacs with SVG support this is the real dsh-web SVG image;
-otherwise it falls back to the emoji glyph in `dsh-emacs--variant-icons'."
-  (let* ((icon-key (or (and tool-name
-                            (cdr (assoc tool-name dsh-emacs--tool-name-icon-keys)))
-                       variant))
-         (glyph (or (cdr (assoc icon-key dsh-emacs--variant-icons)) "🔧")))
-    (if (and (display-graphic-p)
-             (fboundp 'image-type-available-p)
-             (image-type-available-p 'svg))
-        (condition-case nil
-            (let* ((fg (face-foreground 'dsh-emacs-tool-icon-face nil t))
-                   (color (if (and fg (not (equal fg "unspecified")))
-                              fg
-                            "#a78bfa")))
-              (propertize glyph
-                          'display
-                          (create-image
-                           (dsh-emacs-render--tool-icon-svg variant color tool-name)
-                           'svg t :ascent 'center :height 1.0)))
-          (error glyph))
-      glyph)))
+With `dsh-emacs-render-style' `simple', or on a display that cannot draw
+SVG, this is one tool-accent dot.  Otherwise it is the real dsh-web SVG image
+for the variant."
+  (if (or (eq dsh-emacs-render-style 'simple)
+          (not (and (display-graphic-p)
+                    (fboundp 'image-type-available-p)
+                    (image-type-available-p 'svg))))
+      (dsh-emacs-render--simple-icon 'dsh-emacs-tool-icon-face)
+    (condition-case nil
+        (let* ((fg (face-foreground 'dsh-emacs-tool-icon-face nil t))
+               (color (if (and fg (not (equal fg "unspecified")))
+                          fg
+                        "#a78bfa")))
+          (propertize "●"
+                      'face 'dsh-emacs-tool-icon-face
+                      'display
+                      (create-image
+                       (dsh-emacs-render--tool-icon-svg variant color tool-name)
+                       'svg t :ascent 'center :height 1.0)))
+      (error (dsh-emacs-render--simple-icon 'dsh-emacs-tool-icon-face)))))
 
 (defun dsh-emacs-render--event-icon (state)
   "Return a compact status dot for an exceptional execution STATE.
@@ -437,24 +445,27 @@ STATE is `retry', `error' or `idle'; the adjacent title supplies its meaning."
 
 (defun dsh-emacs-render--think-icon ()
   "Return the Thinking row leading glyph as a display string.
-In graphical Emacs with SVG support this is the real dsh-web IconThinkOutline14
-sparkle, tinted with the thinking color (matching `dsh-emacs-thinking-face');
-otherwise it falls back to the \"✶\" glyph used by terminal Emacs."
-  (if (and (display-graphic-p)
-           (fboundp 'image-type-available-p)
-           (image-type-available-p 'svg))
-      (condition-case nil
-          (let* ((fg (face-foreground 'dsh-emacs-thinking-face nil t))
-                 (color (if (and fg (not (equal fg "unspecified")))
-                            fg
-                          "#b45f06")))
-            (propertize "✶"
-                        'display
-                        (create-image
-                         (dsh-emacs-render--think-icon-svg color)
-                         'svg t :ascent 'center :height 1.0)))
-        (error "✶"))
-    "✶"))
+With `dsh-emacs-render-style' `simple' this is one thinking-accent dot.
+Otherwise, in graphical Emacs with SVG support it is the real dsh-web
+IconThinkOutline14 sparkle, tinted with the thinking color (matching
+`dsh-emacs-thinking-face'); without SVG it falls back to the \"✶\" glyph."
+  (if (eq dsh-emacs-render-style 'simple)
+      (dsh-emacs-render--simple-icon 'dsh-emacs-thinking-face)
+    (if (and (display-graphic-p)
+             (fboundp 'image-type-available-p)
+             (image-type-available-p 'svg))
+        (condition-case nil
+            (let* ((fg (face-foreground 'dsh-emacs-thinking-face nil t))
+                   (color (if (and fg (not (equal fg "unspecified")))
+                              fg
+                            "#b45f06")))
+              (propertize "✶"
+                          'display
+                          (create-image
+                           (dsh-emacs-render--think-icon-svg color)
+                           'svg t :ascent 'center :height 1.0)))
+          (error "✶"))
+      "✶")))
 
 (defconst dsh-emacs--todo-icon-svg-template
   "<svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M13.3277 9.69629V10.976H7.28086V9.69629H13.3277Z\" fill=\"__C__\"/><path d=\"M13.3277 2.97256V4.25225H7.28086V2.97256H13.3277Z\" fill=\"__C__\"/><path d=\"M4.64512 10.336C4.64505 9.62755 4.07081 9.05322 3.3623 9.05322C2.65386 9.05329 2.07956 9.62759 2.07949 10.336C2.07949 11.0445 2.65382 11.6188 3.3623 11.6188C4.07085 11.6188 4.64512 11.0446 4.64512 10.336ZM5.92559 10.336C5.92559 11.7515 4.77777 12.8993 3.3623 12.8993C1.94689 12.8993 0.799805 11.7515 0.799805 10.336C0.799871 8.92066 1.94693 7.7736 3.3623 7.77354C4.77773 7.77354 5.92552 8.92062 5.92559 10.336Z\" fill=\"__C__\"/><path d=\"M4.64531 3.6123C4.6453 2.90382 4.07098 2.32949 3.3625 2.32949C2.65403 2.32951 2.0797 2.90383 2.07969 3.6123C2.07969 4.32079 2.65402 4.8951 3.3625 4.89512C4.07099 4.89512 4.64531 4.3208 4.64531 3.6123ZM5.925 3.6123C5.925 5.02772 4.77792 6.1748 3.3625 6.1748C1.9471 6.17479 0.8 5.02771 0.8 3.6123C0.800013 2.19691 1.9471 1.04982 3.3625 1.0498C4.77791 1.0498 5.92499 2.1969 5.925 3.6123Z\" fill=\"__C__\"/></svg>"
@@ -469,35 +480,42 @@ falls back to a list glyph.")
 
 (defun dsh-emacs-render--todo-icon ()
   "Return the todo row leading glyph as a display string.
-In graphical Emacs with SVG support this is the real dsh-web plan checklist
-icon, tinted with the tool purple accent (`dsh-emacs-tool-icon-face'); it is
-distinct from the green row text.  Terminal Emacs falls back to the \"▤\"
-glyph carrying that same face."
-  (let ((glyph (if (and (display-graphic-p)
-                        (fboundp 'image-type-available-p)
-                        (image-type-available-p 'svg))
-                   (condition-case nil
-                       (let* ((fg (face-foreground 'dsh-emacs-tool-icon-face nil t))
-                              (color (if (and fg (not (equal fg "unspecified")))
-                                         fg
-                                       "#a78bfa")))
-                         (propertize "▤"
-                                     'display
-                                     (create-image
-                                      (dsh-emacs-render--todo-icon-svg color)
-                                      'svg t :ascent 'center :height 1.0)))
-                     (error "▤"))
-                 "▤")))
-    (propertize glyph 'face 'dsh-emacs-tool-icon-face)))
+With `dsh-emacs-render-style' `simple' this is one tool-purple dot.
+Otherwise, in graphical Emacs with SVG support it is the real dsh-web plan
+checklist icon, tinted with the tool purple accent
+\(`dsh-emacs-tool-icon-face'); it is distinct from the green row text.
+Terminal Emacs without SVG falls back to the \"▤\" glyph carrying that same
+face."
+  (if (eq dsh-emacs-render-style 'simple)
+      (dsh-emacs-render--simple-icon 'dsh-emacs-tool-icon-face)
+    (let ((glyph (if (and (display-graphic-p)
+                          (fboundp 'image-type-available-p)
+                          (image-type-available-p 'svg))
+                     (condition-case nil
+                         (let* ((fg (face-foreground 'dsh-emacs-tool-icon-face nil t))
+                                (color (if (and fg (not (equal fg "unspecified")))
+                                           fg
+                                         "#a78bfa")))
+                           (propertize "▤"
+                                       'display
+                                       (create-image
+                                        (dsh-emacs-render--todo-icon-svg color)
+                                        'svg t :ascent 'center :height 1.0)))
+                       (error "▤"))
+                   "▤")))
+      (propertize glyph 'face 'dsh-emacs-tool-icon-face))))
 
 (defun dsh-emacs-render--goal-trigger-icon ()
   "Return the goal dartboard as a display string.
-Reuses the Composer Goal Row's dsh-web goal SVG
+With `dsh-emacs-render-style' `simple' this is one goal-accent dot.
+Otherwise it reuses the Composer Goal Row's dsh-web goal SVG
 \(`dsh-emacs-composer--goal-icon') so a goal keeps one icon across the
 composer, the transcript trigger notice and the goal tool cards; terminal
 Emacs without SVG shows the row's `◎ ' text fallback."
-  (or (dsh-emacs-composer--goal-icon)
-      (propertize "◎ " 'face 'dsh-emacs-composer-goal-face)))
+  (if (eq dsh-emacs-render-style 'simple)
+      (dsh-emacs-render--simple-icon 'dsh-emacs-composer-goal-face)
+    (or (dsh-emacs-composer--goal-icon)
+        (propertize "◎ " 'face 'dsh-emacs-composer-goal-face))))
 
 (defconst dsh-emacs-render--turn-trigger-icon-svg-template
   (concat "<svg xmlns=\"http://www.w3.org/2000/svg\" "
@@ -517,32 +535,36 @@ source never invents an identity it did not record.")
 
 (defun dsh-emacs-render--turn-trigger-icon ()
   "Return the turn-trigger leading glyph as a display string.
-It is dsh web's paper-plane trigger icon tinted from `dsh-emacs-meta-face';
-terminal Emacs without SVG falls back to the `➤' glyph carrying that face."
-  (let ((glyph (propertize "➤" 'face 'dsh-emacs-meta-face)))
-    (if (and (display-graphic-p)
-             (fboundp 'image-type-available-p)
-             (image-type-available-p 'svg))
-        (condition-case nil
-            (let* ((fg (face-foreground 'dsh-emacs-meta-face nil t))
-                   (color (if (and fg (not (equal fg "unspecified"))) fg
-                            "#8b949e")))
-              (propertize glyph
-                          'display
-                          (create-image
-                           (replace-regexp-in-string
-                            "__C__" color
-                            dsh-emacs-render--turn-trigger-icon-svg-template
-                            t t)
-                           'svg t :ascent 'center :height 1.0)))
-          (error glyph))
-      glyph)))
+With `dsh-emacs-render-style' `simple' this is one muted dot.
+Otherwise it is dsh web's paper-plane trigger icon tinted from
+`dsh-emacs-meta-face'; terminal Emacs without SVG falls back to the `➤'
+glyph carrying that face."
+  (if (eq dsh-emacs-render-style 'simple)
+      (dsh-emacs-render--simple-icon 'dsh-emacs-meta-face)
+    (let ((glyph (propertize "➤" 'face 'dsh-emacs-meta-face)))
+      (if (and (display-graphic-p)
+               (fboundp 'image-type-available-p)
+               (image-type-available-p 'svg))
+          (condition-case nil
+              (let* ((fg (face-foreground 'dsh-emacs-meta-face nil t))
+                     (color (if (and fg (not (equal fg "unspecified"))) fg
+                              "#8b949e")))
+                (propertize glyph
+                            'display
+                            (create-image
+                             (replace-regexp-in-string
+                              "__C__" color
+                              dsh-emacs-render--turn-trigger-icon-svg-template
+                              t t)
+                             'svg t :ascent 'center :height 1.0)))
+            (error glyph))
+        glyph))))
 
 (defun dsh-emacs-render--tool-variant (tool-name)
   "Return (VARIANT . ICON) for TOOL-NAME.
-ICON is a display string: the real dsh-web SVG image in graphical Emacs, or
-the emoji fallback otherwise.  A goal tool takes the dartboard dsh web's
-`DetailsRow' keys off the `_goal' suffix instead of a variant icon."
+ICON is a display string: the real dsh-web SVG image where Emacs can draw
+SVG, or one tool-accent dot otherwise.  A goal tool takes the dartboard dsh
+web's `DetailsRow' keys off the `_goal' suffix instead of a variant icon."
   (let* ((variant (or (cdr (assoc tool-name dsh-emacs--tool-variants)) "others"))
          (icon (if (equal variant "goal")
                    (dsh-emacs-render--goal-trigger-icon)
@@ -1688,8 +1710,13 @@ text arrives."
                (dsh-emacs-ui--blank-above-preserve))
               (setq start (point))
               (dsh-emacs-render--insert-read-only
-               (concat (dsh-emacs-render--think-icon) " Think\n")
-               'dsh-emacs-thinking-face)
+               (concat
+                (propertize (dsh-emacs-render--think-icon)
+                            'face 'dsh-emacs-thinking-face)
+                (propertize " Think\n"
+                            'face (dsh-emacs-render--row-label-face
+                                   'dsh-emacs-thinking-face)))
+               nil)
               (dsh-emacs-render--insert-read-only
                (concat text "\n") 'dsh-emacs-thinking-body-face)
               (setq end (copy-marker (- (point) 1) t))))
@@ -2293,7 +2320,9 @@ inspected; an empty body leaves the row unfoldable."
       :namespace-id (dsh-emacs-render--make-namespace)
       :block-id (format "%s-%s" prefix (dsh-emacs-render--make-block-id event))
       :label-left (concat icon " "
-                          (propertize label 'face 'dsh-emacs-meta-face))
+                          (propertize label
+                                      'face (dsh-emacs-render--row-label-face
+                                             'dsh-emacs-meta-face)))
       :label-right (and time
                         (propertize time 'face 'dsh-emacs-timestamp-face))
       :body body
@@ -2474,16 +2503,25 @@ UPDATE refreshes the existing block while preserving its fold state."
    (dsh-emacs-ui-make-fragment
     :namespace-id namespace-id
     :block-id block-id
-    :label-left (propertize (concat (dsh-emacs-render--think-icon) " " "Think")
-                            'face 'dsh-emacs-thinking-face)
+    :label-left (concat
+                 ;; The completed fragment outlives the live stream.  In
+                 ;; `simple' its dot settles to the same muted grey as the
+                 ;; label; `full' keeps the thinking accent.
+                 (propertize (dsh-emacs-render--think-icon)
+                             'face (if (eq dsh-emacs-render-style 'simple)
+                                       'dsh-emacs-event-row-face
+                                     'dsh-emacs-thinking-face))
+                 (propertize " Think"
+                             'face (dsh-emacs-render--row-label-face
+                                    'dsh-emacs-thinking-face)))
     :label-right (or (dsh-emacs-render--thinking-preview text)
                      (or timestamp ""))
     :body text
     :style 'minimal
     :status 'thinking
-    ;; Reasoning text is muted everywhere except the label: the header chrome
-    ;; (separator + preview) and the body share the body face.  The label's
-    ;; own face is embedded above, so it wins over the header face.
+    ;; Reasoning text is muted in both styles: the header chrome (separator +
+    ;; preview) and the body share the body face.  In `full' the label keeps
+    ;; the thinking accent above it; `simple' leaves it neutral.
     :header-face 'dsh-emacs-thinking-body-face
     :body-face 'dsh-emacs-thinking-body-face)
    :create-new (not update) :expanded dsh-emacs-thinking-expand-by-default
@@ -2573,15 +2611,15 @@ the transcript; a nil/empty LIST or `dsh-emacs-show-todos' nil renders nothing."
            (summary-only dsh-emacs-todo-summary-only)
            (sum (dsh-emacs-render--todo-summary list))
            (body (unless summary-only (dsh-emacs-render--todo-body list)))
-           ;; Title + summary in the todo green accent (`dsh-emacs-todo-text-face',
-           ;; non-italic); the leading checklist icon keeps the tool purple.
+           ;; Title + summary in the todo green accent in `full'; `simple'
+           ;; leaves them neutral so only the leading dot carries color.
            ;; Separator: one space each side.
+           (label-face (dsh-emacs-render--row-label-face
+                        'dsh-emacs-todo-text-face))
            (label (concat (dsh-emacs-render--todo-icon) " "
-                          (propertize dsh-emacs-todo-title
-                                      'face 'dsh-emacs-todo-text-face)
+                          (propertize dsh-emacs-todo-title 'face label-face)
                           " · "
-                          (propertize sum
-                                      'face 'dsh-emacs-todo-text-face))))
+                          (propertize sum 'face label-face))))
       (dsh-emacs-ui-update-fragment
        (dsh-emacs-ui-make-fragment
         :namespace-id dsh-emacs--todo-namespace
@@ -2700,7 +2738,9 @@ Todo snapshots still apply when ordinary tool cards are hidden."
              (insert-point (dsh-emacs-render--input-insert-point))
              (ts (dsh-emacs-render--event-time event))
              (label-left (concat icon " "
-                                 (propertize title 'face 'dsh-emacs-tool-title-face)))
+                                 (propertize title
+                                     'face (dsh-emacs-render--row-label-face
+                                            'dsh-emacs-tool-title-face))))
              (label-right (or summary ""))
              (block-id (dsh-emacs-render--tool-call-block-id call-id)))
         ;; Track state for later (tool/result will update this block).
@@ -2717,9 +2757,10 @@ Todo snapshots still apply when ordinary tool cards are hidden."
           :body display-body
           :style 'minimal
           :status 'tool-pending
-          ;; The state tint covers the header row only, never the body: the
-          ;; expanded card content must not inherit the row's accent.
-          :header-face 'dsh-emacs-tool-pending-face)
+          ;; In `full', the state tint covers the header row only, never the
+          ;; body; `simple' keeps the header neutral for the colored dot.
+          :header-face (dsh-emacs-render--row-chrome-face
+                        'dsh-emacs-tool-pending-face))
          :create-new t
          :expanded dsh-emacs-tool-expand-by-default
          :insert-before insert-point))
@@ -2732,11 +2773,22 @@ Todo snapshots still apply when ordinary tool cards are hidden."
 (defun dsh-emacs-render--tool-leading (icon state)
   "Leading glyph for a tool row, mirroring dsh web's `leadingFor`:
 ok/running keep the variant ICON; error/stopped are overridden by a
-colored status dot (red / warning-yellow)."
-  (pcase state
-    ('error  "● ")
-    ('stopped "◐ ")
-    (_ (concat icon " "))))
+colored status dot (red / warning-yellow).
+With `dsh-emacs-render-style' `simple', every state uses one dot:
+pending keeps the tool accent, success is green, error red, and stopped
+takes the interrupted face."
+  (if (eq dsh-emacs-render-style 'simple)
+      (concat (dsh-emacs-render--simple-icon
+               (pcase state
+                 ('success 'dsh-emacs-tool-success-face)
+                 ('error 'dsh-emacs-tool-error-face)
+                 ('stopped 'dsh-emacs-tool-stopped-face)
+                 (_ 'dsh-emacs-tool-icon-face)))
+              " ")
+    (pcase state
+      ('error  "● ")
+      ('stopped "◐ ")
+      (_ (concat icon " ")))))
 
 (defconst dsh-emacs-render--tool-io-label-width 3
   "Width of the generic ioCard's section-label column.
@@ -3596,7 +3648,9 @@ tracking belongs to `dsh-emacs-render-tool-result'."
           :block-id block-id
           :label-left (concat
                        (dsh-emacs-render--tool-leading icon state)
-                       (propertize title 'face 'dsh-emacs-tool-title-face))
+                       (propertize title
+                       'face (dsh-emacs-render--row-label-face
+                              'dsh-emacs-tool-title-face)))
           :label-right (if (string-empty-p row-summary)
                            (dsh-emacs-render--tool-result-preview
                             full-text)
@@ -3605,9 +3659,10 @@ tracking belongs to `dsh-emacs-render-tool-result'."
           :style 'minimal
           ;; A cleared goal has no fields to unfold.
           :non-foldable goal-cleared
-          ;; State tint on the header row only: the ioCard body keeps its
-          ;; own neutral faces instead of inheriting the status accent.
-          :header-face face
+          ;; In `full', the state tint covers the header row only; the body
+          ;; keeps its own neutral faces.  `simple' leaves the header neutral
+          ;; for the colored dot.
+          :header-face (dsh-emacs-render--row-chrome-face face)
           :status (pcase state
                     ('success 'tool-success)
                     ('error 'tool-error)
@@ -4296,7 +4351,9 @@ BLOCK-ID identifies the fragment.  Keep the explanation expanded initially."
       :namespace-id ns
       :block-id bid
       :label-left (concat (dsh-emacs-render--event-icon 'error) " "
-                          (propertize label 'face 'dsh-emacs-tool-title-face))
+                          (propertize label
+                                      'face (dsh-emacs-render--row-label-face
+                                             'dsh-emacs-tool-title-face)))
       :label-right (when detail
                      (propertize detail 'face 'dsh-emacs-timestamp-face))
       :body text
@@ -4329,7 +4386,8 @@ their own error card.  Neither the old conversation nor input history changes."
         :label-left (concat
                      (dsh-emacs-render--tool-icon "bash") " "
                      (propertize "Automatic compaction"
-                                 'face 'dsh-emacs-tool-title-face))
+                                 'face (dsh-emacs-render--row-label-face
+                                        'dsh-emacs-tool-title-face)))
         :label-right
         (propertize
          (string-join
@@ -4557,7 +4615,9 @@ settles the last unresolved attempt; it never relabels earlier started retries."
                                                 "error"))
                                     'error)
                                    (t 'idle)))
-                            " " (propertize label 'face 'dsh-emacs-tool-title-face
+                            " " (propertize label
+                                            'face (dsh-emacs-render--row-label-face
+                                                   'dsh-emacs-tool-title-face)
                                             'help-echo (or detail "Outcome not available")))
                     (map-elt model :label-right)
                     (propertize
@@ -4596,7 +4656,8 @@ a visible live body, collapsed when replayed from history."
       :label-left
       (concat (dsh-emacs-render--event-icon 'idle) " "
               (propertize "Incomplete reply"
-                          'face 'dsh-emacs-tool-title-face
+                          'face (dsh-emacs-render--row-label-face
+                                 'dsh-emacs-tool-title-face)
                           'help-echo "Uncommitted output; may follow failure, retry or cancellation"))
       :label-right
       (propertize (format "turn %s · step %s"
@@ -4689,11 +4750,13 @@ indented line per file, with no body background."
                    (propertize
                     (format "Deliverables · %d file%s" count
                             (if (= count 1) "" "s"))
-                    'face 'dsh-emacs-deliverable-text-face))
+                    'face (dsh-emacs-render--row-label-face
+                           'dsh-emacs-deliverable-text-face)))
       :body (dsh-emacs-render--deliverables-body files)
       :style 'minimal
       :status 'deliverables
-      :header-face 'dsh-emacs-deliverable-text-face)
+      :header-face (dsh-emacs-render--row-chrome-face
+                    'dsh-emacs-deliverable-text-face))
      :create-new t :expanded nil
      :insert-before (dsh-emacs-render--input-insert-point))))
 
@@ -4789,12 +4852,14 @@ Replaces any existing animation for the same command (idempotent)."
                                (dsh-emacs-render--tool-leading
                                 (or (nth 3 entry) "") 'pending)
                                (propertize (nth 2 entry)
-                                           'face 'dsh-emacs-tool-title-face)
+                                           'face (dsh-emacs-render--row-label-face
+                                                  'dsh-emacs-tool-title-face))
                                " "
                                (nth next-index dsh-emacs--command-spinner-frames))
                   :style 'minimal
                   :status 'tool-pending
-                  :header-face 'dsh-emacs-tool-pending-face))))
+                  :header-face (dsh-emacs-render--row-chrome-face
+                                'dsh-emacs-tool-pending-face)))))
           (dsh-emacs--command-spinner-stop command-id))))))
 
 (defun dsh-emacs--command-spinner-stop (command-id)
@@ -4852,12 +4917,15 @@ the real `command/run' event when it arrives."
           :namespace-id ns :block-id block-id
           :label-left (concat
                        (dsh-emacs-render--tool-leading icon 'pending)
-                       (propertize label 'face 'dsh-emacs-tool-title-face)
+                       (propertize label
+                                   'face (dsh-emacs-render--row-label-face
+                                          'dsh-emacs-tool-title-face))
                        " "
                        (car dsh-emacs--command-spinner-frames))
           :style 'minimal
           :status 'tool-pending
-          :header-face 'dsh-emacs-tool-pending-face)
+          :header-face (dsh-emacs-render--row-chrome-face
+                        'dsh-emacs-tool-pending-face))
          :create-new t :expanded t
          :insert-before (dsh-emacs-render--input-insert-point))
         (dsh-emacs--command-spinner-start temp-id
@@ -4878,7 +4946,8 @@ Stops the spinner, deletes the fragment, and clears `dsh-emacs--pending-command'
 (defun dsh-emacs-render-command (event)
   "Render a `command/run' or `command/done' EVENT as one flow node,
 mirroring dsh web's command rows: a leading bash terminal icon (the same
-dsh-web SVG as bash tool rows, the `💻' emoji in terminal Emacs) followed
+dsh-web SVG as bash tool rows, or one tool-accent dot on displays without
+SVG) followed
 by the command name and a classic `-\|/' spinner while running (see
 `dsh-emacs--command-spinner-frames');
 on completion the header shows only the command name + a short status
@@ -4910,12 +4979,15 @@ Returns the event seq."
                   :namespace-id ns :block-id block-id
                   :label-left (concat
                                (dsh-emacs-render--tool-leading icon 'pending)
-                               (propertize label 'face 'dsh-emacs-tool-title-face)
+                               (propertize label
+                                           'face (dsh-emacs-render--row-label-face
+                                                  'dsh-emacs-tool-title-face))
                                " "
                                (car dsh-emacs--command-spinner-frames))
                   :style 'minimal
                   :status 'tool-pending
-                  :header-face 'dsh-emacs-tool-pending-face)
+                  :header-face (dsh-emacs-render--row-chrome-face
+                                'dsh-emacs-tool-pending-face))
                  :create-new t :expanded nil
                  :insert-before (dsh-emacs-render--input-insert-point))
                 (unless (dsh-emacs-render--history-page-p)
@@ -4928,6 +5000,8 @@ Returns the event seq."
               (pcase-let* ((`(,ns ,block-id ,label ,icon) entry)
                            (ok (not (equal kind "error")))
                            (state (if ok 'success 'error))
+                           (face (if ok 'dsh-emacs-tool-success-face
+                                   'dsh-emacs-tool-error-face))
                            (entry-icon (or icon
                                            (dsh-emacs-render--tool-icon "bash"))))
                 (dsh-emacs-ui-update-fragment
@@ -4935,22 +5009,23 @@ Returns the event seq."
                   :namespace-id ns :block-id block-id
                   :label-left (concat
                                (dsh-emacs-render--tool-leading entry-icon state)
-                               (propertize label 'face 'dsh-emacs-tool-title-face))
+                               (propertize label
+                                           'face (dsh-emacs-render--row-label-face
+                                                   'dsh-emacs-tool-title-face)))
                   ;; Keep the run's label and a short status in the header;
                   ;; the possibly multi-line result belongs in the folded body.
                   :label-right (propertize
                                 (or (dsh-emacs-render--command-status-text state)
                                     "")
-                                'face (if ok
-                                          'dsh-emacs-tool-success-face
-                                        'dsh-emacs-tool-error-face))
+                                'face (if (eq dsh-emacs-render-style 'simple)
+                                          'dsh-emacs-timestamp-face
+                                        face))
                   :body (and (stringp text) (not (string-empty-p text)) text)
                   :style 'minimal
                   :status (if ok 'tool-success 'tool-error)
-                  ;; The result body does not inherit the header's accent.
-                  :header-face (if ok
-                                   'dsh-emacs-tool-success-face
-                                 'dsh-emacs-tool-error-face))
+                  ;; The body does not inherit a header accent; `simple'
+                  ;; keeps the whole header neutral for the colored dot.
+                  :header-face (dsh-emacs-render--row-chrome-face face))
                  :create-new nil)))))))
     seq))
 
@@ -4985,12 +5060,15 @@ finishes."
       :namespace-id ns :block-id block-id
       :label-left (concat
                    (dsh-emacs-render--tool-leading icon 'pending)
-                   (propertize command 'face 'dsh-emacs-tool-title-face)
+                   (propertize command
+                              'face (dsh-emacs-render--row-label-face
+                                     'dsh-emacs-tool-title-face))
                    " "
                    (car dsh-emacs--command-spinner-frames))
       :style 'minimal
       :status 'tool-pending
-      :header-face 'dsh-emacs-tool-pending-face)
+      :header-face (dsh-emacs-render--row-chrome-face
+                    'dsh-emacs-tool-pending-face))
      :create-new t :expanded t
      :insert-before (dsh-emacs-render--input-insert-point))
     (dsh-emacs--command-spinner-start id (current-buffer))
@@ -5006,6 +5084,8 @@ a finished row never animates again."
   (when-let* ((entry (gethash id dsh-emacs--command-blocks)))
     (dsh-emacs--command-spinner-stop id)
     (let* ((state (if ok 'success 'error))
+           (face (if ok 'dsh-emacs-tool-success-face
+                   'dsh-emacs-tool-error-face))
            (entry-icon (or (nth 3 entry)
                            (dsh-emacs-render--tool-icon "bash")))
            (status (dsh-emacs-render--tool-status-text state exit-code signal))
@@ -5016,20 +5096,19 @@ a finished row never animates again."
         :label-left (concat
                      (dsh-emacs-render--tool-leading entry-icon state)
                      (propertize (nth 2 entry)
-                                 'face 'dsh-emacs-tool-title-face))
+                                 'face (dsh-emacs-render--row-label-face
+                                        'dsh-emacs-tool-title-face)))
         :label-right (propertize
                       (or status "")
-                      'face (if ok
-                                'dsh-emacs-tool-success-face
-                              'dsh-emacs-tool-error-face))
+                      'face (if (eq dsh-emacs-render-style 'simple)
+                                'dsh-emacs-timestamp-face
+                              face))
         :body body
         :style 'minimal
         :status (if ok 'tool-success 'tool-error)
-        ;; The success/error accent covers the header row only; the command
-        ;; output body stays plain instead of inheriting the row's tint.
-        :header-face (if ok
-                         'dsh-emacs-tool-success-face
-                       'dsh-emacs-tool-error-face))
+        ;; In `full' the success/error accent covers the header row only;
+        ;; `simple' keeps it neutral for the colored dot.
+        :header-face (dsh-emacs-render--row-chrome-face face))
        :create-new nil :expanded t)
       (remhash id dsh-emacs--command-blocks))))
 

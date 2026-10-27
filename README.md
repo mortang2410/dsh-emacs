@@ -182,6 +182,11 @@ Completed replies show Copy, Fork and tokens together on the left, in order.
 Elapsed time appears in the compact Completed disclosure above the answer; add `duration` to
 `dsh-emacs-reply-footer-items` to also show it in the footer.
 
+Transcript event rows follow `dsh-emacs-render-style`: `full` (the
+default) draws dsh-web's SVG icons where Emacs can, while `simple` leads every
+event row with one compact dot (state-colored where the row carries state) and
+mutes the rest of the row.
+
 See [Mode line](docs/modeline.md),
 [Reply footer](docs/customization.md#reply-footer), and
 [UI styling](docs/ui-styling.md) for configuration.

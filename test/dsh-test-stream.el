@@ -1551,6 +1551,49 @@
                                     (dsh-test--faces-at (match-beginning 0))))))))
       (kill-buffer buf))))
 
+;; In `simple` the Think title joins the other event-row labels on the muted
+;; grey face.  The live dot keeps the thinking accent; the completed fragment's
+;; dot settles to the same grey.
+(ert-deftest dsh-emacs-test-stream-simple-think-complete-dot-is-gray ()
+  :tags '(dsh-unit)
+  (let ((dsh-emacs-render-style 'simple))
+    (with-temp-buffer
+      (dsh-emacs-mode)
+      (dsh-emacs-modeline-setup)
+      (dsh-emacs-render--render-thinking-block
+       "t" "b1" "reason" 1 (point-max))
+      (goto-char (point-min))
+      (ert-info ((format "%s" "simple-think-fragment-title-is-neutral"))
+        (should (search-forward "Think" nil t))
+        (should (memq 'dsh-emacs-event-row-face
+                      (dsh-test--faces-at (match-beginning 0))))
+        (should-not (memq 'dsh-emacs-thinking-face
+                          (dsh-test--faces-at (match-beginning 0)))))
+      (goto-char (point-min))
+      (ert-info ((format "%s" "simple-think-fragment-dot-is-gray"))
+        (should (search-forward "●" nil t))
+        (should (memq 'dsh-emacs-event-row-face
+                      (dsh-test--faces-at (match-beginning 0))))
+        (should-not (memq 'dsh-emacs-thinking-face
+                          (dsh-test--faces-at (match-beginning 0))))))
+    (with-temp-buffer
+      (dsh-emacs-mode)
+      (dsh-emacs-modeline-setup)
+      (dsh-emacs-render--start-thinking-stream
+       '((data . ((turn . 1) (step . 1)))) "live reasoning")
+      (goto-char (point-min))
+      (ert-info ((format "%s" "simple-live-think-title-is-neutral"))
+        (should (search-forward "Think" nil t))
+        (should (memq 'dsh-emacs-event-row-face
+                      (dsh-test--faces-at (match-beginning 0))))
+        (should-not (memq 'dsh-emacs-thinking-face
+                          (dsh-test--faces-at (match-beginning 0)))))
+      (goto-char (point-min))
+      (ert-info ((format "%s" "simple-live-think-dot-keeps-accent"))
+        (should (search-forward "●" nil t))
+        (should (memq 'dsh-emacs-thinking-face
+                      (dsh-test--faces-at (match-beginning 0))))))))
+
 ;; The think body during streaming (waiting for a response) likewise
 ;; uses the muted body face; only the header label keeps thinking-face.
 (ert-deftest dsh-emacs-test-stream-thinking-stream-body-uses-body-face ()
