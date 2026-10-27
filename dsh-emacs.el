@@ -664,12 +664,12 @@ loads the plugin tree, which does not fit in a fixed few seconds."
   "Fetch the session list and refresh workspaces."
   (interactive)
   ;; Launch in the background only when automatic startup is enabled.
-  ;; Otherwise ensure an external server is reachable without starting one.
+  ;; Otherwise ensure an external server is reachable: `dsh-emacs-server-ensure'
+  ;; reports instructions instead of starting one, and an answer counts as alive.
   ;; When just started, poll until ready before firing the RPC.
   (let ((alive (if dsh-emacs-server-auto-start
                    (dsh-emacs-server-start)
-                 (dsh-emacs-server-ensure)
-                 t)))
+                 (progn (dsh-emacs-server-ensure) t))))
     (if alive
         (dsh-emacs-list-sessions--fetch)
       ;; Server just launched — wait for it within the same grace period a
