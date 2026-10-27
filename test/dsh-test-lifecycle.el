@@ -682,6 +682,43 @@
                        '("session/fork"
                          ((request . ((sessionId . "parent-1") (atSeq . 0)))))))))))
 
+;; The server already accepted the fork, so a list refresh or child open that
+;; cannot reach it afterwards must not cancel the success report: the user has
+;; to learn the child exists even when the GUI server went away mid-callback.
+(ert-deftest dsh-emacs-test-lifecycle-fork-survives-refresh-and-open-failure ()
+  :tags '(dsh-unit)
+  (let ((noninteractive nil)
+        (dsh-emacs-server-auto-start nil)
+        (opened nil)
+        (listed 0)
+        (messages nil))
+    (cl-letf (((symbol-function 'dsh-emacs-server-ensure) #'ignore)
+              ((symbol-function 'dsh-emacs-subagent-require) #'ignore)
+              ((symbol-function 'dsh-emacs--rpc-async)
+               (lambda (method _params cb)
+                 (when (string= method "session/fork")
+                   (funcall cb t '((sessionId . "child-1"))))))
+              ((symbol-function 'dsh-emacs-open-session)
+               (lambda (sid)
+                 (push sid opened)
+                 (user-error "dsh: server not reachable")))
+              ((symbol-function 'dsh-emacs-list-sessions)
+               (lambda ()
+                 (setq listed (1+ listed))
+                 (user-error "dsh: server not reachable, retry with M-x dsh-emacs")))
+              ((symbol-function 'message)
+               (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+      (dsh-emacs-fork-session "parent-1"))
+    (ert-info ((format "%s" "fork-refreshes-and-opens-the-child"))
+      (should (= 1 listed))
+      (should (equal '("child-1") opened)))
+    (ert-info ((format "%s" "fork-reports-the-refresh-failure"))
+      (should (member "dsh: server not reachable, retry with M-x dsh-emacs" messages)))
+    (ert-info ((format "%s" "fork-keeps-the-child-id-when-open-signals"))
+      (should (equal (concat "Forked parent-1 -> child-1; open it from the session "
+                             "list: dsh: server not reachable")
+                     (car messages))))))
+
 ;; Fork uses the selected durable reply, even inside a code block, never
 ;; the newest reply or the globally selected session.
 (ert-deftest dsh-emacs-test-lifecycle-fork-message-selects-exact-reply-and-buffer-session ()

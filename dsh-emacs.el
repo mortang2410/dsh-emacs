@@ -678,6 +678,15 @@ loads the plugin tree, which does not fit in a fixed few seconds."
       (dsh-emacs-list-sessions--fetch-when-ready
        (+ (float-time) dsh-emacs-server-wait-seconds)))))
 
+(defun dsh-emacs-list-sessions--refresh-quiet ()
+  "Refresh the cached session list, reporting a failure instead of signaling.
+The mutation callbacks (fork, rename, archive, unarchive) run after the server
+already accepted the change, so an unreachable server must not cancel their
+success message or the buffer they open.  The cached list stays as it was."
+  (condition-case err
+      (dsh-emacs-list-sessions)
+    (user-error (message "%s" (error-message-string err)))))
+
 ;;;###autoload
 (defun dsh-emacs--new-session-workspace ()
   "Resolve the workspace to create the next session in, or nil.
@@ -1705,9 +1714,18 @@ list refreshes and the child buffer opens with the same workspace path."
                                     (dsh-protocol-session--from-alist value))))
                               (unless child-id
                                 (user-error "session/fork returned no sessionId"))
-                              (dsh-emacs-list-sessions)
-                              (message "Forked %s -> %s" session-id child-id)
-                              (dsh-emacs-open-session child-id))))))
+                              (dsh-emacs-list-sessions--refresh-quiet)
+                              ;; The fork already succeeded on the server, so an
+                              ;; unreachable server must not swallow that: report
+                              ;; the child instead of letting open signal.
+                              (condition-case err
+                                  (progn
+                                    (dsh-emacs-open-session child-id)
+                                    (message "Forked %s -> %s" session-id child-id))
+                                (user-error
+                                 (message "Forked %s -> %s; open it from the session list: %s"
+                                          session-id child-id
+                                          (error-message-string err)))))))))
 
 (defun dsh-emacs-fork-message-at-point ()
   "Fork this conversation through the committed assistant reply at point.
@@ -1776,7 +1794,7 @@ inverse.  Refreshes the archived set and the session list on success."
                                       (dsh-emacs--normalize-archived
                                        (dsh-protocol-archived-set-archived-session-ids
                                         (dsh-protocol-archived-set--from-alist value))))
-                                (dsh-emacs-list-sessions)
+                                (dsh-emacs-list-sessions--refresh-quiet)
                                 (message "Session archived"))
                             (message "Failed to archive: %S" value)))))
 
@@ -1807,7 +1825,7 @@ and the session list."
                                       (dsh-emacs--normalize-archived
                                        (dsh-protocol-archived-set-archived-session-ids
                                         (dsh-protocol-archived-set--from-alist value))))
-                                (dsh-emacs-list-sessions)
+                                (dsh-emacs-list-sessions--refresh-quiet)
                                 (message "Session restored"))
                             (message "Failed to restore session: %S" value)))))
 
@@ -1831,7 +1849,7 @@ title prompt is prefilled with the session's current title."
                         (lambda (ok value)
                           (if ok
                               (progn
-                                (dsh-emacs-list-sessions)
+                                (dsh-emacs-list-sessions--refresh-quiet)
                                 (message "Session renamed"))
                             (message "Failed to rename: %S" value)))))
 
