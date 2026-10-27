@@ -1100,7 +1100,7 @@ for a chat — when it drops, the health-check / watchdog / reconnect
 machinery below restores it, and until then replies appear only via manual
 refresh (`C-c C-r`):
 
-1. **user/message** → `dsh-emacs-render-user-message`: rendered as a card background. Image attachments follow the text like dsh web's message gallery: every image becomes a compact thumbnail in wrapping rows (`dsh-emacs-render-image-thumbnail-lines`), one image or several; inline base64 fills immediately and an attachment ref fills when `session/attachment` settles, with `RET` / `mouse-1` opening the original. File attachments stay display-only chips. A host-injected goal round continuation (`source.kind = "goal"`, appended by dsh-goal-round-driver) draws dsh web's collapsed **Continuing goal** trigger notice, expandable to the injected `<goal_round>` prompt; every other host injection stays hidden (`dsh-emacs-render--user-authored-p`).
+1. **user/message** → `dsh-emacs-render-user-message`: rendered as a card background. Image attachments follow the text like dsh web's message gallery: every image becomes a compact thumbnail in wrapping rows (`dsh-emacs-render-image-thumbnail-lines`), one image or several; inline base64 fills immediately and an attachment ref fills when `session/attachment` settles, with `RET` / `mouse-1` opening the original. File attachments stay display-only chips. A host-injected goal round continuation (`source.kind = "goal"`, appended by dsh-goal-round-driver) draws dsh web's collapsed **Continuing goal** trigger notice, expandable to the injected `<goal_round>` prompt. A non-human message admitted by an inbox claim (a child `send_message`, a settled subagent, or a team, webhook, schedule, job or plugin event) also draws a collapsed turn-trigger notice — source-family title, event clock and the recorded body — above the turn's own **Completed in …** summary; it stays outside that fold. Every other host injection stays hidden (`dsh-emacs-render--user-authored-p`).
 2. **assistant/chunk** → `dsh-emacs-render-assistant-chunk`: the first text chunk appears immediately; subsequent insertion, Markdown and viewport following coalesce on a 50ms one-shot timer. Event boundaries, finalization, stream changes and disconnect flush pending text.
 3. **assistant/message** → `dsh-emacs-render-assistant-message`: the final snapshot is used to correct the streamed body, avoiding duplicate display
 4. **tool/call** → `dsh-emacs-render-tool-call`: a nonempty `exit_plan_mode`
@@ -1111,7 +1111,9 @@ refresh (`C-c C-r`):
 5. **tool/result** → `dsh-emacs-render-tool-result`: updates the existing tool card (success/error state). `create_goal` / `get_goal` / `update_goal` settle into dsh web's goal card (`dsh-emacs-render--goal-card-body`): objective summary, State / Rounds, and the blocker message while blocked.
 6. **turn/start** / **turn/end** → `dsh-emacs-render-turn-start/end`: rendered as a divider
 
-`dsh-emacs-protocol.el` decodes retry, compaction and turn-ending facts.
+`dsh-emacs-protocol.el` decodes retry, compaction, turn-ending and
+`agent/inbox/spliced` facts.  The renderer replays the latter's queue/claim
+state only for turn-trigger attribution; it paints no row.
 `dsh-emacs-modeline.el` owns only compaction state, its matching boundaries,
 and `dsh-emacs-describe-status` for compaction/Plan details. Compaction matches
 its own id and may run between turns. Retry has no mode-line state.

@@ -53,6 +53,8 @@
 ;;                        └─ dsh-protocol-skill (name description when-to-use
 ;;                             model-invocable path)
 ;;   inbox projection → dsh-protocol-queue-item (id placement text kind)
+;;   agent/inbox/spliced → dsh-protocol-inbox-splice (target start
+;;                            removed-count outcome inserted)
 ;;   permissionPresets/catalog → dsh-protocol-permission-catalog (options)
 ;;                        └─ dsh-protocol-permission-option (value name
 ;;                             description)
@@ -2379,8 +2381,11 @@ DATA.REASON.ERROR ({code, message, ...})."
                              (event &key assistant &aux
                                     (data (dsh-protocol--field 'data event))
                                     (source (dsh-protocol--field 'source data))
+                                    (id (dsh-protocol--field 'id data))
                                     (source-kind (dsh-protocol--field 'kind source))
                                     (source-name (dsh-protocol--field 'name source))
+                                    (source-provider
+                                     (dsh-protocol--field 'provider source))
                                     (content
                                      (mapcar #'dsh-protocol-content-block--from-alist
                                              (dsh-protocol--list
@@ -2400,12 +2405,43 @@ DATA.REASON.ERROR ({code, message, ...})."
                                                   (stringp label))
                                         collect (cons label id)))))))
   "Content and source evidence of a user or assistant message.
-Source-less optimistic user echoes use the same content boundary."
-  content source-kind source-name references)
+ID is the durable message identity an inbox claim names; SOURCE-PROVIDER is
+the recorded provider for webhook triggers.  Source-less optimistic user
+echoes use the same content boundary and leave both nil."
+  id content source-kind source-name source-provider references)
 
 (defun dsh-protocol-attachment-data--from-alist (value)
   "Return the encoded bytes in a session/attachment response VALUE."
   (dsh-protocol--field 'data value))
+
+(cl-defstruct (dsh-protocol-inbox-splice
+               (:constructor dsh-protocol-inbox-splice--from-alist
+                             (event &aux
+                                    (data (dsh-protocol--field 'data event))
+                                    (target (dsh-protocol--field 'target data))
+                                    (start (dsh-protocol--field 'start data))
+                                    (removed-count
+                                     (dsh-protocol--field 'removedCount data))
+                                    (outcome
+                                     (dsh-protocol--field 'outcome data))
+                                    (inserted
+                                     (cl-loop
+                                      for item
+                                      in (dsh-protocol--objects
+                                          (dsh-protocol--field 'inserted data))
+                                      for id = (dsh-protocol--field 'id item)
+                                      for source = (dsh-protocol--field
+                                                    'source item)
+                                      when (stringp id)
+                                      collect (cons id (dsh-protocol--field
+                                                        'kind source)))))))
+  "One `agent/inbox/spliced' queue change.
+TARGET is `next-turn' or `next-step'; INSERTED holds (ID . SOURCE-KIND) for
+the messages the splice adds and REMOVED-COUNT the number it drops from the
+same queue.  OUTCOME is `canceled' when a dropped batch was never admitted.
+The renderer replays these records only to classify a turn-opening notice;
+it paints no row and keeps no Agent state."
+  target start removed-count outcome inserted)
 
 (defun dsh-protocol-record-event--from-alist (record)
   "Return the durable event carried by history RECORD."

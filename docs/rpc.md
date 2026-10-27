@@ -2341,6 +2341,9 @@ from the packed records of `data.stream`
 it settles, the live body is taken over by the card rather than drawn twice;
 `session/end-seed` advances the event sequence anchor without rendering a row;
 the restore boundary is internal bookkeeping, not conversation content.
+`agent/inbox/spliced` paints no row: it replays the inbox queue/claim state
+so a non-human message an inbox claim admits renders as dsh web's collapsed
+turn-trigger row (postmortem/159).
 `deliverables/presented` renders after `turn/end` as
 a single `Deliverables · N files` line, collapsed by default (turnTail position;
 expanded, it lists one indented line per path, click to open, with no body

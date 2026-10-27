@@ -499,6 +499,45 @@ Emacs without SVG shows the row's `◎ ' text fallback."
   (or (dsh-emacs-composer--goal-icon)
       (propertize "◎ " 'face 'dsh-emacs-composer-goal-face)))
 
+(defconst dsh-emacs-render--turn-trigger-icon-svg-template
+  (concat "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+          "width=\"14\" height=\"14\" viewBox=\"0 0 16 16\" "
+          "fill=\"none\" stroke-width=\"1\">"
+          "<path d=\"M4.74024 9.11029L1.82882 7.79865C1.75022 7.76323 "
+          "1.75026 7.65161 1.82889 7.61626L12.9665 2.60943C13.0354 2.57846 "
+          "13.1125 2.63213 13.1073 2.70749L12.3914 13.1388C12.3864 13.2117 "
+          "12.3073 13.2548 12.2433 13.2194L6.12677 9.83657\" stroke=\"__C__\"/>"
+          "<path d=\"M8.44336 11.0825L6.2832 13.2843C6.22048 13.3482 "
+          "6.11182 13.3038 6.11182 13.2143V9.86772C6.11182 9.84165 6.122 "
+          "9.8166 6.1402 9.79793L12.972 2.78748\" stroke=\"__C__\"/></svg>")
+  "dsh web's `IconPaperPlaneOutline' trigger glyph with a \"__C__\" placeholder.
+Web tints one source-family icon per trigger; the Emacs row keeps one
+incoming-message glyph and names the family in its label, so a foreign
+source never invents an identity it did not record.")
+
+(defun dsh-emacs-render--turn-trigger-icon ()
+  "Return the turn-trigger leading glyph as a display string.
+It is dsh web's paper-plane trigger icon tinted from `dsh-emacs-meta-face';
+terminal Emacs without SVG falls back to the `➤' glyph carrying that face."
+  (let ((glyph (propertize "➤" 'face 'dsh-emacs-meta-face)))
+    (if (and (display-graphic-p)
+             (fboundp 'image-type-available-p)
+             (image-type-available-p 'svg))
+        (condition-case nil
+            (let* ((fg (face-foreground 'dsh-emacs-meta-face nil t))
+                   (color (if (and fg (not (equal fg "unspecified"))) fg
+                            "#8b949e")))
+              (propertize glyph
+                          'display
+                          (create-image
+                           (replace-regexp-in-string
+                            "__C__" color
+                            dsh-emacs-render--turn-trigger-icon-svg-template
+                            t t)
+                           'svg t :ascent 'center :height 1.0)))
+          (error glyph))
+      glyph)))
+
 (defun dsh-emacs-render--tool-variant (tool-name)
   "Return (VARIANT . ICON) for TOOL-NAME.
 ICON is a display string: the real dsh-web SVG image in graphical Emacs, or
@@ -1041,6 +1080,41 @@ Older pages can supply missing outcomes; trimming removes consumed turns.")
 Retain per-message usage and answer eligibility by seq for history merges,
 plus work boundary markers and the reader's disclosure overlay.")
 
+(defvar-local dsh-emacs-render--inbox-pending nil
+  "Pending inbox messages per target, as (ID . SOURCE-KIND) cells.
+Replayed from `agent/inbox/spliced' only to classify a notice that claims a
+turn: the renderer paints nothing and keeps no Agent or queue state.")
+
+(defvar-local dsh-emacs-render--inbox-claim nil
+  "Latest inbox claim per target, or nil.
+Each value is a plist of :seq, :entries (the claimed (ID . SOURCE-KIND)
+cells), :human (whether the batch claimed human input) and :truncated (the
+queue lost the inserted batch to a page cut).  dsh web's `InboxState'
+replaces a target's claim on every claim, and an insertion removes a
+requeued id again.")
+
+(defvar-local dsh-emacs-render--turn-start-seq nil
+  "Event seq of the current turn's `turn/start', or nil.
+dsh web's idle-steer test compares it with the latest inbox claims.")
+
+(defvar-local dsh-emacs-render--turn-step nil
+  "Current `step/start' step number, or nil.
+A non-human next-step claim only wakes a turn at step 1.")
+
+(defvar-local dsh-emacs-render--turn-opener-painted nil
+  "Non-nil once the current turn's opening input painted a row.
+A hidden injection does not set it: the opening claim batch decides whether a
+later notice may still use the opener fallback.  A visible opener ends
+attribution, and so does an exhausted batch below.")
+
+(defvar-local dsh-emacs-render--turn-claim-slots nil
+  "Opening claim messages still expected to render in the current turn.
+The host logs its claims after `turn/start' and before the first `step/start',
+so their non-canceled removals record the admitted batch even when a page cut
+lost the queue entries.  Every rendered `user/message' spends one slot; once
+they run out, a later notice belongs to a later step and cannot use the
+opener fallback.")
+
 (defvar dsh-emacs-render--footer-batch nil
   "Non-nil while collecting a bounded history batch before painting footers.")
 
@@ -1080,6 +1154,12 @@ miss the entry is cleaned up.")
         dsh-emacs--command-spinners (make-hash-table :test 'equal)
         dsh-emacs--pending-command nil
         dsh-emacs-render--turn-deliverables nil
+        dsh-emacs-render--inbox-pending nil
+        dsh-emacs-render--inbox-claim nil
+        dsh-emacs-render--turn-start-seq nil
+        dsh-emacs-render--turn-step nil
+        dsh-emacs-render--turn-opener-painted nil
+        dsh-emacs-render--turn-claim-slots nil
         dsh-emacs-render--reply-turns nil
         dsh-emacs-render--attempt-turns nil)
   ;; Todo strip folds its snapshot from replayed `tool/call' events, so clear
@@ -2031,40 +2111,226 @@ transcript shows the same notice."
          (dsh-protocol-message-source-kind
           (dsh-protocol-message--from-alist event))))
 
+(defun dsh-emacs-render--note-inbox-splice (event)
+  "Replay one `agent/inbox/spliced' EVENT for turn-trigger attribution.
+Only the inbox queues matter: dsh web paints a non-human message as a
+`turn-trigger' node when the latest claim admits it.  The next-turn claim
+wakes any target; a next-step claim wakes only step 1 (the idle-steer rule
+below).  A canceled removal admits nothing, and a requeued insertion leaves
+the claim again (see the web `InboxState').  This keeps display-only state
+and paints no row; returns EVENT's seq."
+  (let ((seq (dsh-protocol-event-sequence--from-alist event)))
+    (when-let* ((splice (dsh-protocol-inbox-splice--from-alist event))
+                (target (dsh-protocol-inbox-splice-target splice))
+                ((member target '("next-turn" "next-step"))))
+      (let* ((pending (alist-get target dsh-emacs-render--inbox-pending
+                                 nil nil #'equal))
+             (start (min (max 0 (or (dsh-protocol-inbox-splice-start
+                                     splice) 0))
+                         (length pending)))
+             (removed-count (max 0 (or (dsh-protocol-inbox-splice-removed-count
+                                        splice) 0)))
+             (end (min (length pending) (+ start removed-count)))
+             (removed (cl-subseq pending start end))
+             (kept (append (cl-subseq pending 0 start)
+                           (cl-subseq pending end)))
+             (at (min start (length kept)))
+             (inserted (dsh-protocol-inbox-splice-inserted splice)))
+        (setf (alist-get target dsh-emacs-render--inbox-pending nil nil #'equal)
+              (append (cl-subseq kept 0 at) inserted (cl-subseq kept at)))
+        ;; dsh web's `withoutInserted': a requeued id is not claimed.
+        (let ((claim (alist-get target dsh-emacs-render--inbox-claim
+                                nil nil #'equal)))
+          (when claim
+            (dolist (entry inserted)
+              (setf (plist-get claim :entries)
+                    (delete (assoc (car entry) (plist-get claim :entries))
+                            (plist-get claim :entries))))))
+        (when (and (> removed-count 0)
+                   (not (equal (dsh-protocol-inbox-splice-outcome splice)
+                               "canceled")))
+          ;; A page cut can drop the insertion but keep the claim; remember
+          ;; that the removed batch could not be materialized.
+          (setf (alist-get target dsh-emacs-render--inbox-claim
+                           nil nil #'equal)
+                (list :seq seq :entries removed
+                      :human (cl-some (lambda (entry)
+                                        (equal (cdr entry) "user"))
+                                      removed)
+                      :truncated (< (length pending)
+                                    (+ start removed-count))))
+          ;; The host claims before step 1 opens, so these removals are the
+          ;; turn's opening batch even when the page cut lost their entries.
+          (when (and dsh-emacs-render--turn-start-seq
+                     (null dsh-emacs-render--turn-step))
+            (setq dsh-emacs-render--turn-claim-slots
+                  (+ (or dsh-emacs-render--turn-claim-slots 0)
+                     removed-count))))))
+    seq))
+
+(defun dsh-emacs-render--claimed-p (target id)
+  "Whether ID is in TARGET's latest inbox claim."
+  (when-let* ((claim (alist-get target dsh-emacs-render--inbox-claim
+                                nil nil #'equal)))
+    (and (assoc id (plist-get claim :entries)) t)))
+
+(defun dsh-emacs-render--idle-steer-p (id)
+  "Whether ID is a non-human notice claimed into step 1 of this turn.
+dsh web's idle-steer rule: a step-1 claim after the turn started, no
+next-turn claim in that turn, and no human input in the same batch.  Without
+it a child message admitted while the parent is idle would wake a turn whose
+only attribution is hidden."
+  (when-let* ((turn-start dsh-emacs-render--turn-start-seq)
+              ((equal dsh-emacs-render--turn-step 1))
+              (claim (alist-get "next-step" dsh-emacs-render--inbox-claim
+                                nil nil #'equal))
+              (claim-seq (plist-get claim :seq))
+              ((integerp claim-seq))
+              ((> claim-seq turn-start))
+              ((not (plist-get claim :human))))
+    (let ((next-turn (alist-get "next-turn" dsh-emacs-render--inbox-claim
+                                nil nil #'equal)))
+      (and (or (null next-turn)
+               (let ((seq (plist-get next-turn :seq)))
+                 (or (not (integerp seq)) (< seq turn-start))))
+           (assoc id (plist-get claim :entries))
+           t))))
+
+(defconst dsh-emacs-render--waking-source-kinds
+  '("agent-message" "team-message" "subagent-settled" "webhook" "schedule"
+    "tool-jobs" "cordis-host-runner")
+  "Non-human sources known to wake a turn.
+The opener fallback uses this list so a truncated claim cannot turn a
+runtime-context or other injection into invented attribution.")
+
+(defun dsh-emacs-render--turn-opener-p ()
+  "Whether the current turn's opening input has not painted a row yet."
+  (and dsh-emacs-render--turn-start-seq
+       (not dsh-emacs-render--turn-opener-painted)))
+
+(defun dsh-emacs-render--truncated-claim-p ()
+  "Whether a claim made in this turn lost its queued messages.
+A history page can begin after the insertion that queued a notice; its claim
+then removes nothing and cannot name the admitted id.  Only a message in the
+turn's opening claim batch may use the fallback, and only for a known waking
+source."
+  (when-let* ((turn-start dsh-emacs-render--turn-start-seq))
+    (cl-some
+     (lambda (target)
+       (let ((claim (alist-get target dsh-emacs-render--inbox-claim
+                               nil nil #'equal)))
+         (and claim
+              (plist-get claim :truncated)
+              (let ((seq (plist-get claim :seq)))
+                (and (integerp seq) (> seq turn-start))))))
+     '("next-turn" "next-step"))))
+
+(defun dsh-emacs-render--turn-trigger-p (event)
+  "Whether EVENT is a non-human message claimed to open a turn.
+Mirrors dsh web's `turn-trigger' node: a `user/message' whose source is not
+`user' and whose id the latest next-turn claim admits, or the idle step-1
+next-step claim.  When a page cut kept the claim but lost the insertion, the
+turn's first known waking input within the opening claim batch still gets the
+row instead of reappearing as an orphan Completed summary.  The goal round
+keeps its own notice; every other injection that did not wake a turn stays
+hidden."
+  (when-let* ((message (dsh-protocol-message--from-alist event))
+              (id (dsh-protocol-message-id message))
+              (kind (dsh-protocol-message-source-kind message)))
+    (and (not (equal kind "user"))
+         (not (equal kind "goal"))
+         (or (dsh-emacs-render--claimed-p "next-turn" id)
+             (dsh-emacs-render--idle-steer-p id)
+             (and (member kind dsh-emacs-render--waking-source-kinds)
+                  (dsh-emacs-render--turn-opener-p)
+                  (> (or dsh-emacs-render--turn-claim-slots 0) 0)
+                  (dsh-emacs-render--truncated-claim-p))))))
+
+(defun dsh-emacs-render--turn-trigger-title (message)
+  "Return dsh web's trigger title for MESSAGE's recorded source.
+The source family is named, not inferred: an unknown or malformed source
+falls back to `Execution requested' without claiming an identity."
+  (pcase (dsh-protocol-message-source-kind message)
+    ("agent-message" "Task message received")
+    ("team-message" "Team message received")
+    ("subagent-settled" "Subtask status updated")
+    ("webhook" (if (equal (dsh-protocol-message-source-provider message)
+                          "github")
+                   "GitHub event received"
+                 "External event received"))
+    ("schedule" "Automation task")
+    ("tool-jobs" "Background task updated")
+    ("cordis-host-runner" "Plugin status updated")
+    (_ "Execution requested")))
+
+(defun dsh-emacs-render--trigger-body (event)
+  "Return EVENT's model-facing notice text, or nil.
+Adjacent text blocks join with no separator, as the provider flattens them
+\(matching dsh web's context body), so an injected `Agent … sent a message: '
+prefix stays on the sentence the child sent."
+  (let ((text (mapconcat
+               #'identity
+               (delq nil
+                     (mapcar #'dsh-protocol-content-block-text
+                             (cl-remove-if-not
+                              (lambda (block)
+                                (equal (dsh-protocol-content-block-kind block)
+                                       "text"))
+                              (dsh-protocol-message-content
+                               (dsh-protocol-message--from-alist event)))))
+               "")))
+    (unless (string-empty-p text) text)))
+
+(defun dsh-emacs-render--trigger-block (event label icon prefix status)
+  "Insert EVENT as a collapsed trigger notice named LABEL.
+ICON leads LABEL, PREFIX keys the fragment and STATUS separates the goal
+round from another turn trigger.  The model-facing body stays folded until
+inspected; an empty body leaves the row unfoldable."
+  (let ((body (dsh-emacs-render--trigger-body event))
+        (time (dsh-emacs-render--event-time event)))
+    (dsh-emacs-ui-update-fragment
+     (dsh-emacs-ui-make-fragment
+      :namespace-id (dsh-emacs-render--make-namespace)
+      :block-id (format "%s-%s" prefix (dsh-emacs-render--make-block-id event))
+      :label-left (concat icon " "
+                          (propertize label 'face 'dsh-emacs-meta-face))
+      :label-right (and time
+                        (propertize time 'face 'dsh-emacs-timestamp-face))
+      :body body
+      :style 'minimal
+      :status status
+      :non-foldable (null body)
+      :padding t)
+     :create-new t :expanded nil
+     :insert-before (dsh-emacs-render--input-insert-point))))
+
 (defun dsh-emacs-render--goal-trigger-block (event)
   "Insert EVENT's goal round continuation as a collapsed trigger notice.
 Mirrors dsh web's `TurnTriggerNodeView': the goal dartboard, `Continuing
 goal' and the event clock over the injected round prompt, folded by default
 so the model-facing `<goal_round>' instruction stays out of the way until
 inspected.  An empty body leaves the row unfoldable."
-  (let* ((body (dsh-emacs-render--text-from-content
-                (dsh-protocol-message-content
-                 (dsh-protocol-message--from-alist event))))
-         (body (and (stringp body) (not (string-empty-p body)) body))
-         (time (dsh-emacs-render--event-time event)))
-    (dsh-emacs-ui-update-fragment
-     (dsh-emacs-ui-make-fragment
-      :namespace-id (dsh-emacs-render--make-namespace)
-      :block-id (format "goal-%s" (dsh-emacs-render--make-block-id event))
-      :label-left (concat
-                   (dsh-emacs-render--goal-trigger-icon)
-                   " "
-                   (propertize dsh-emacs-render--goal-trigger-label
-                               'face 'dsh-emacs-meta-face))
-      :label-right (and time
-                        (propertize time 'face 'dsh-emacs-timestamp-face))
-      :body body
-      :style 'minimal
-      :status 'goal-trigger
-      :non-foldable (null body)
-      :padding t)
-     :create-new t :expanded nil
-     :insert-before (dsh-emacs-render--input-insert-point))))
+  (dsh-emacs-render--trigger-block
+   event dsh-emacs-render--goal-trigger-label
+   (dsh-emacs-render--goal-trigger-icon) "goal" 'goal-trigger))
+
+(defun dsh-emacs-render--turn-trigger-block (event)
+  "Insert EVENT as dsh web's turn-trigger notice.
+A non-human message claimed to open a turn is attribution, not conversation:
+the row names the source family, carries the event clock and folds the
+recorded notice body until inspected.  Showing it keeps the turn's
+`Completed in …' summary from reading as an unprompted reply."
+  (dsh-emacs-render--trigger-block
+   event
+   (dsh-emacs-render--turn-trigger-title
+    (dsh-protocol-message--from-alist event))
+   (dsh-emacs-render--turn-trigger-icon) "trigger" 'turn-trigger))
 
 (defun dsh-emacs-render-user-message (event &optional references)
   "Render a `user/message' event with a left rail and the user block face.
 The block gets two blank lines before and one after (see
-`dsh-emacs-render--insert-chat-message' and `dsh-emacs-ui--blank-above-preserve').
+`dsh-emacs-render--insert-chat-message' and
+`dsh-emacs-ui--blank-above-preserve').
 Image content blocks render below the text like dsh web's message gallery:
 every image is a compact thumbnail in wrapping rows (four text lines tall by
 default), whether the message carries one image or several.
@@ -2073,15 +2339,30 @@ Inline base64 shows immediately, attachment refs fill in when
 RET or mouse-1 opens the original.  File content blocks render as
 display-only `[file: name · size]' lines (see
 `dsh-emacs-render--file-placeholder').
-A host-injected goal round continuation renders its trigger notice instead
-\(see `dsh-emacs-render--goal-trigger-block').  Optional REFERENCES (list of
+A host-injected goal round continuation renders its trigger notice; a
+non-human message an inbox claim woke renders dsh web's turn-trigger notice
+\(see `dsh-emacs-render--goal-trigger-block' and
+`dsh-emacs-render--turn-trigger-block').  Optional REFERENCES (list of
 \(LABEL . SESSION-ID)) from the immediately following `session-reference'
 recall event lets the readable `@label' session tokens the server persisted
 \(canonical id stripped) render as real session chips; see
 `dsh-emacs-reference-fontify'.  Returns the event seq."
-  (if (dsh-emacs-render--goal-continuation-p event)
-      (dsh-emacs-render--goal-trigger-block event)
-    (dsh-emacs-render--insert-user-block event references))
+  (let ((painted
+         (cond
+          ((dsh-emacs-render--goal-continuation-p event)
+           (dsh-emacs-render--goal-trigger-block event)
+           t)
+          ((dsh-emacs-render--turn-trigger-p event)
+           (dsh-emacs-render--turn-trigger-block event)
+           t)
+          (t (dsh-emacs-render--insert-user-block event references)))))
+    (when (and dsh-emacs-render--turn-start-seq painted)
+      (setq dsh-emacs-render--turn-opener-painted t))
+    (when (and dsh-emacs-render--turn-start-seq
+               (integerp dsh-emacs-render--turn-claim-slots)
+               (> dsh-emacs-render--turn-claim-slots 0))
+      (setq dsh-emacs-render--turn-claim-slots
+            (1- dsh-emacs-render--turn-claim-slots))))
   (dsh-protocol-event-sequence--from-alist event))
 
 (defun dsh-emacs-render-delete-user-message (start end)
@@ -3751,7 +4032,8 @@ process.  Their final answer, if any, remains outside that outer fold."
                                     (point) 'dsh-emacs-user-message nil end)))
                        ((memq (map-elt (get-text-property
                                         (point) 'dsh-emacs-ui-state) :status)
-                              '(goal-trigger reply-footer work-details))
+                              '(goal-trigger turn-trigger reply-footer
+                                work-details))
                         (goto-char (next-single-property-change
                                     (point) 'dsh-emacs-ui-state nil end)))))))
         (let* ((start (copy-marker (line-beginning-position)))
@@ -3780,8 +4062,9 @@ process.  Their final answer, if any, remains outside that outer fold."
                       "Completed"))))))
           ;; Mid-turn automatic input has a visible trigger rather than a bubble.
           (while (and (not interleaved) (< (point) end))
-            (when (eq (map-elt (get-text-property (point) 'dsh-emacs-ui-state)
-                               :status) 'goal-trigger)
+            (when (memq (map-elt (get-text-property
+                                  (point) 'dsh-emacs-ui-state) :status)
+                        '(goal-trigger turn-trigger))
               (setq interleaved t))
             (goto-char (next-single-property-change
                         (point) 'dsh-emacs-ui-state nil end)))
@@ -3908,7 +4191,13 @@ or re-fetched history whose tail is a `turn/start' without a matching
 running spinner (idempotent — the send path already lit it, and a
 `turn/end' later clears it)."
   ;; A turn started (or a still-open turn was replayed after a reconnect /
-  ;; session reopen): light the mode-line running spinner.
+  ;; session reopen): light the mode-line running spinner.  The turn start
+  ;; also bounds dsh web's idle-steer inbox classification.
+  (setq dsh-emacs-render--turn-start-seq
+        (dsh-protocol-event-sequence--from-alist event)
+        dsh-emacs-render--turn-step nil
+        dsh-emacs-render--turn-opener-painted nil
+        dsh-emacs-render--turn-claim-slots nil)
   (unless (dsh-emacs-render--history-page-p)
     (dsh-emacs--ml-busy-set t))
   (dsh-protocol-event-sequence--from-alist event))
@@ -3970,7 +4259,12 @@ spinner."
   (let ((turn (dsh-protocol-turn--from-alist event)))
     (when (integerp turn)
       (dsh-emacs-render--flush-deliverables turn)))
-  ;; The turn finished: stop the mode-line running spinner.
+  ;; The turn finished: stop the mode-line running spinner and drop the
+  ;; attribution bounds (no message can belong to a closed turn).
+  (setq dsh-emacs-render--turn-start-seq nil
+        dsh-emacs-render--turn-step nil
+        dsh-emacs-render--turn-opener-painted nil
+        dsh-emacs-render--turn-claim-slots nil)
   (unless (dsh-emacs-render--history-page-p)
     (dsh-emacs--ml-busy-set nil))
   ;; A failed run must not be silently swallowed: dsh signals it as
@@ -4814,12 +5108,20 @@ a finished row never animates again."
             ("turn/start" (setq seq (dsh-emacs-render-turn-start event)))
             ("turn/end" (setq seq (dsh-emacs-render-turn-end event)))
             ((or "step/start" "step/end")
+             (when (equal type "step/start")
+               (setq dsh-emacs-render--turn-step
+                     (dsh-protocol-turn-step-event-step
+                      (dsh-protocol-turn-step-event--from-alist event))))
              (setq seq (if (dsh-emacs-render--history-page-p)
                            (dsh-protocol-event-sequence--from-alist event)
                          (dsh-emacs-render-step-event event))))
             ("assistant/attempt"
              (setq seq (dsh-emacs-render-assistant-attempt event)))
             ("session/end-seed" (setq seq (dsh-protocol-event-sequence--from-alist event)))
+            ;; Display-only attribution state: no row, but the seq is durable
+            ;; and must advance the anchor like any other consumed record.
+            ("agent/inbox/spliced"
+             (setq seq (dsh-emacs-render--note-inbox-splice event)))
             ("deliverables/presented"
              (setq seq (dsh-emacs-render-deliverables event)))
             (_ nil))
@@ -5051,6 +5353,14 @@ re-delivered and the running animation had no later event to stop it."
                 (dsh-emacs--pending-command nil)
                 (dsh-emacs--todo-list nil)
                 (dsh-emacs-render--turn-deliverables nil)
+                ;; This page's claims are older than the live tail's; scope
+                ;; them so the tail's inbox attribution survives the prepend.
+                (dsh-emacs-render--inbox-pending nil)
+                (dsh-emacs-render--inbox-claim nil)
+                (dsh-emacs-render--turn-start-seq nil)
+                (dsh-emacs-render--turn-step nil)
+                (dsh-emacs-render--turn-opener-painted nil)
+                (dsh-emacs-render--turn-claim-slots nil)
                 (work-starts nil))
             ;; Existing turns at the page boundary belong AFTER the page.
             ;; New starts created by this batch still precede their own work.
@@ -5069,6 +5379,9 @@ re-delivered and the running animation had no later event to stop it."
                   (dsh-emacs-render--flush-deliverables))
               (dolist (marker work-starts)
                 (set-marker-insertion-type marker nil))))
+        ;; A snapshot is anchor-gated, so records already processed (and
+        ;; their claims) are not replayed here; keep the attribution state
+        ;; they built.  The full reload path clears it instead.
         (dolist (entry entries)
           (consume-entry entry)
           ;; Let timers and process input run between groups.  Redisplay is

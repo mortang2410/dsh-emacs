@@ -1338,5 +1338,45 @@
     (should (equal (dsh-protocol-file-ref-name
                     (dsh-protocol-file-receipt-file receipt)) "remote.pdf"))))
 
+(ert-deftest dsh-emacs-test-protocol-inbox-splice ()
+  :tags '(dsh-unit)
+  (let ((splice (dsh-protocol-inbox-splice--from-alist
+                 '((type . "agent/inbox/spliced") (seq . 4)
+                   (data . ((target . "next-turn") (start . 0)
+                            (removedCount . 1) (outcome . "canceled")
+                            (inserted . [((id . "a")
+                                          (source . ((kind . "agent-message"))))
+                                         ((id . "b")
+                                          (source . ((kind . "user"))))
+                                         ((source . ((kind . "user"))))])))))))
+    (should (equal (dsh-protocol-inbox-splice-target splice) "next-turn"))
+    (should (equal (dsh-protocol-inbox-splice-start splice) 0))
+    (should (equal (dsh-protocol-inbox-splice-removed-count splice) 1))
+    (should (equal (dsh-protocol-inbox-splice-outcome splice) "canceled"))
+    ;; An entry without an id is not a claimable occurrence.
+    (should (equal (dsh-protocol-inbox-splice-inserted splice)
+                   '(("a" . "agent-message") ("b" . "user")))))
+  (should-not (dsh-protocol-inbox-splice-target
+               (dsh-protocol-inbox-splice--from-alist
+                '((type . "user/message") (data . ((content . []))))))))
+
+(ert-deftest dsh-emacs-test-protocol-message-trigger-fields ()
+  :tags '(dsh-unit)
+  (let ((message (dsh-protocol-message--from-alist
+                  '((type . "user/message")
+                    (data . ((id . "m1")
+                             (source . ((kind . "webhook")
+                                        (provider . "github")))
+                             (content . [])))))))
+    (should (equal (dsh-protocol-message-id message) "m1"))
+    (should (equal (dsh-protocol-message-source-kind message) "webhook"))
+    (should (equal (dsh-protocol-message-source-provider message) "github")))
+  ;; An optimistic echo has neither identity nor provider.
+  (let ((message (dsh-protocol-message--from-alist
+                  '((type . "user/message")
+                    (data . ((content . [])))))))
+    (should-not (dsh-protocol-message-id message))
+    (should-not (dsh-protocol-message-source-provider message))))
+
 (provide 'dsh-test-protocol)
 ;;; dsh-test-protocol.el ends here

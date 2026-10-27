@@ -29,6 +29,16 @@ minor) and stay undated until the release is cut.
 
 ### Fixed
 
+- **Attribute subagent- and event-driven turns**: a host-injected notice that
+  the inbox claim wakes (a child `send_message`, a settled subagent, or a
+  team, webhook, schedule, job or plugin event) now renders dsh web's
+  collapsed turn-trigger row above the turn's **Completed in …** summary
+  instead of disappearing. The row names its source, folds the recorded body
+  behind RET and stays visible when the turn folds; the idle step-1 case is
+  recognized too, so child-driven turns no longer read as unprompted replies.
+  Mid-turn, canceled and requeued injections stay hidden.
+  (rationale: [postmortem/159](postmortem/159-turn-trigger-notices.md))
+
 - **Live session activity ordering**: sending a message now updates the
   session's cached activity time, so Recents and workspace rows reorder
   immediately. Activity received during a list refresh survives its snapshot,

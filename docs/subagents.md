@@ -58,6 +58,15 @@ without navigation or an xref entry. Full ids disambiguate duplicate labels.
 honoring Emacs display rules. No extra chat prefix or minibuffer action map
 is installed.
 
+When a child talks to the parent, the parent transcript attributes the turn
+with dsh web's collapsed trigger row — **Task message received** for a
+`send_message` relay and **Subtask status updated** for settlement — carrying
+the event clock; `RET` unfolds the recorded notice. The row remains visible
+above the turn's **Completed in …** summary whether the child was admitted to
+a new turn or steered into step 1 of an idle one, so a child-driven reply is
+never presented as unprompted. Mid-turn, canceled and requeued injections
+stay hidden.
+
 Run the command again **inside a child** to select its children. This avoids
 fetching an entire descendant tree and keeps the direct parent unambiguous.
 `M-,` returns to the actual originating buffer and position. The separate
